@@ -11,6 +11,7 @@ export interface AuthContextValue {
   user: User | null;
   loading: boolean;
   signIn: () => Promise<void>;
+  signInAsDemo: () => void;
   signOut: () => Promise<void>;
   getIdToken: () => Promise<string | null>;
 }
@@ -22,8 +23,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Firebase restores the real session (including across page reloads) and
-    // calls back whenever the user signs in or out in another tab.
+    // Check if demo user is active in localStorage
+    const savedDemo = localStorage.getItem('credensa_demo_user');
+    if (savedDemo) {
+      try {
+        const parsed = JSON.parse(savedDemo);
+        setUser({
+          uid: parsed.uid || 'demo-user-sidrah',
+          email: parsed.email || 'sidrahwaghoo786@gmail.com',
+          displayName: parsed.displayName || 'Sidrah Waghoo',
+          photoURL: null,
+          getIdToken: async () => 'guest-demo-token',
+        } as unknown as User);
+        setLoading(false);
+        return;
+      } catch {}
+    }
+
     const unsubscribe = onAuthChange((firebaseUser) => {
       setUser(firebaseUser);
       setLoading(false);
@@ -38,7 +54,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn: async () => {
         await signInWithGoogle();
       },
+      signInAsDemo: () => {
+        const demoUser = {
+          uid: 'demo-user-sidrah',
+          email: 'sidrahwaghoo786@gmail.com',
+          displayName: 'Sidrah Waghoo',
+        };
+        localStorage.setItem('credensa_demo_user', JSON.stringify(demoUser));
+        setUser({
+          ...demoUser,
+          photoURL: null,
+          getIdToken: async () => 'guest-demo-token',
+        } as unknown as User);
+      },
       signOut: async () => {
+        localStorage.removeItem('credensa_demo_user');
+        setUser(null);
         await signOutUser();
       },
       getIdToken,

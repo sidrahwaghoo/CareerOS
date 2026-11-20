@@ -72,6 +72,9 @@ export function signOutUser() {
  * there is no user. The token is sent to the API as `Authorization: Bearer …`.
  */
 export async function getIdToken(): Promise<string | null> {
+  if (typeof window !== 'undefined' && localStorage.getItem('credensa_demo_user')) {
+    return 'guest-demo-token';
+  }
   if (!auth) return null;
   const user = auth.currentUser;
   if (!user) return null;
@@ -80,6 +83,19 @@ export async function getIdToken(): Promise<string | null> {
 
 /** Subscribe to authentication state changes. Returns an unsubscribe function. */
 export function onAuthChange(callback: (user: User | null) => void) {
+  if (typeof window !== 'undefined' && localStorage.getItem('credensa_demo_user')) {
+    try {
+      const stored = JSON.parse(localStorage.getItem('credensa_demo_user') || '{}');
+      callback({
+        uid: stored.uid || 'demo-user-sidrah',
+        email: stored.email || 'sidrahwaghoo786@gmail.com',
+        displayName: stored.displayName || 'Sidrah Waghoo',
+        photoURL: null,
+        getIdToken: async () => 'guest-demo-token',
+      } as unknown as User);
+      return () => undefined;
+    } catch {}
+  }
   if (!auth) {
     callback(null);
     return () => undefined;

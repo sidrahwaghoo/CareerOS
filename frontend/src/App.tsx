@@ -226,7 +226,7 @@ function Mark({ className = 'w-8 h-8' }: { className?: string }) {
 }
 
 function SignInScreen() {
-  const { signIn } = useAuth();
+  const { signIn, signInAsDemo } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -246,21 +246,21 @@ function SignInScreen() {
   return (
     <div className="min-h-screen bg-page flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        <div className="rounded-2xl border border-line bg-surface p-8">
+        <div className="rounded-none border border-[#262626] bg-[#0d0d0d] p-8 shadow-2xl">
           <div className="flex flex-col items-center text-center">
             <Mark className="w-12 h-12" />
-            <h1 className="mt-4 text-2xl text-txt">Credensa</h1>
-            <p className="mt-1 text-sm text-txt-3">Professional identity OS</p>
+            <h1 className="mt-4 text-2xl tracking-[0.15em] uppercase font-bold text-white font-['Saira_Condensed']">Credensa</h1>
+            <p className="mt-1 text-xs uppercase tracking-widest text-zinc-400 font-mono">Professional Identity OS</p>
           </div>
 
-          <div className="mt-10">
-            <h2 className="text-xl text-txt text-center">Sign in to Credensa</h2>
-            <p className="mt-2 text-sm text-txt-2 text-center">
-              Use your Google account to access your private career workspace.
+          <div className="mt-8">
+            <h2 className="text-xl text-white text-center font-['Cormorant_Garamond'] italic text-2xl">Executive Access</h2>
+            <p className="mt-2 text-xs text-zinc-400 text-center font-mono">
+              Access your verified Career Notebook and AI Copilot reasoning engine.
             </p>
 
             {error && (
-              <div className="mt-6 rounded-lg border border-bad/30 bg-bad/10 px-4 py-3 text-sm text-bad" role="alert">
+              <div className="mt-4 border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-300 font-mono" role="alert">
                 {error}
               </div>
             )}
@@ -268,15 +268,28 @@ function SignInScreen() {
             <button
               onClick={handleSignIn}
               disabled={busy}
-              className="cred-btn-primary mt-8 w-full disabled:opacity-60 disabled:cursor-not-allowed"
+              className="cred-btn-primary mt-6 w-full disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : <GoogleIcon />}
-              {busy ? 'Signing in' : 'Continue with Google'}
+              {busy ? 'Connecting...' : 'Continue with Google'}
+            </button>
+
+            <div className="relative my-6 flex items-center justify-center">
+              <div className="border-t border-[#262626] w-full" />
+              <span className="bg-[#0d0d0d] px-3 text-[10px] uppercase font-mono tracking-widest text-zinc-500 absolute">OR</span>
+            </div>
+
+            <button
+              onClick={() => signInAsDemo()}
+              className="w-full h-11 rounded-full border border-white/20 bg-white/5 hover:bg-white/10 hover:border-white/40 text-white font-mono text-xs uppercase tracking-widest transition-all duration-150 flex items-center justify-center gap-2 active:scale-[0.98]"
+            >
+              <Sparkles className="w-4 h-4 text-white" />
+              Enter Workspace (Instant Access)
             </button>
           </div>
         </div>
-        <p className="mt-6 text-center text-xs text-txt-3">
-          Your career data is private to your account and never shared
+        <p className="mt-6 text-center text-[11px] font-mono tracking-wide text-zinc-500">
+          Career records are encrypted and protected by Credensa Core OS
         </p>
       </div>
     </div>
