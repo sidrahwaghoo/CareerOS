@@ -30,8 +30,49 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Security headers.
-app.use(helmet());
+// Security headers with Firebase & Google OAuth CSP support.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "'unsafe-eval'",
+          "https://apis.google.com",
+          "https://*.firebaseapp.com",
+          "https://*.googleapis.com",
+        ],
+        scriptSrcElem: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://apis.google.com",
+          "https://*.firebaseapp.com",
+          "https://*.googleapis.com",
+        ],
+        frameSrc: [
+          "'self'",
+          "https://*.firebaseapp.com",
+          "https://accounts.google.com",
+          "https://*.google.com",
+        ],
+        connectSrc: [
+          "'self'",
+          "https://*.googleapis.com",
+          "https://*.firebaseio.com",
+          "https://identitytoolkit.googleapis.com",
+          "https://securetoken.googleapis.com",
+          "https://*.firebaseapp.com",
+        ],
+        imgSrc: ["'self'", "data:", "https:", "blob:"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+  })
+);
 
 const allowedOrigin = process.env.FRONTEND_URL;
 app.use(
