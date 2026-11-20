@@ -235,7 +235,11 @@ function SignInScreen() {
     setError('');
     try {
       await signIn();
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.code === 'auth/popup-closed-by-user' || err?.message?.includes('popup-closed-by-user')) {
+        // User voluntarily dismissed the popup window, ignore cleanly
+        return;
+      }
       const message = err instanceof Error ? err.message : '';
       setError(message || 'Unable to sign in. Verify that Google Authentication is enabled for this project, or contact your administrator.');
     } finally {
