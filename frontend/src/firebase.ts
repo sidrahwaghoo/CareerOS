@@ -16,10 +16,10 @@ import type { Auth, User } from 'firebase/auth';
  * misconfiguration is reported honestly instead of silently using fake data.
  */
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyAFhPgvohJ97W0qsqFAxmRh8i_VtKvmj24',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'credensa-d855e.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'credensa-d855e',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:578130724627:web:72a7ce2cc56e1f71cbbce6',
 };
 
 const requiredKeys = ['apiKey', 'authDomain', 'projectId', 'appId'] as const;
