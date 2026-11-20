@@ -38,3 +38,11 @@ backend/data/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# Agent skills & local temporary tools
+.agents/
+ui-ux-pro-max-skill/
+unslop/
+rea/
+skills-lock.json
+skills-lock.json.lock

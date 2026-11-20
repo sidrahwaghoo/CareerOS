@@ -1,8 +1,9 @@
-const { DraftService, CareerRecordService } = require('../services/firestoreService');
+const { DraftService, CareerRecordService, UserService } = require('../services/firestoreService');
 const { GeminiService } = require('../services/geminiService');
 
 const draftService = new DraftService();
 const careerRecordService = new CareerRecordService();
+const userService = new UserService();
 const geminiService = new GeminiService();
 
 function handleError(res, err) {
@@ -28,11 +29,12 @@ const reviewController = {
 
       const reviewResult = await geminiService.review(draft.content, jobDescription, record);
 
-      // Update draft with review result (still scoped to the owning user).
       const updated = await draftService.update(draftId, {
         reviewResult,
         status: 'edited',
       }, userId);
+
+      await userService.recordUsage(userId, 'reviews').catch(() => null);
 
       res.json({ ...updated, reviewResult });
     } catch (err) {

@@ -1,8 +1,9 @@
-const { MatchService, CareerRecordService } = require('../services/firestoreService');
+const { MatchService, CareerRecordService, UserService } = require('../services/firestoreService');
 const { GeminiService } = require('../services/geminiService');
 
 const matchService = new MatchService();
 const careerRecordService = new CareerRecordService();
+const userService = new UserService();
 const geminiService = new GeminiService();
 
 function handleError(res, err) {
@@ -20,16 +21,11 @@ const matchController = {
         return res.status(400).json({ error: 'recordId and jobDescription are required' });
       }
 
-      // Ownership is enforced by the service: a record owned by another user
-      // resolves to 404 here, never exposes its data to the match agent.
       const record = await careerRecordService.get(recordId, userId);
       if (!record) return res.status(404).json({ error: 'Career record not found' });
 
       const matchResult = await geminiService.match(record, jobDescription);
 
-      // PRD data model: expose a nested jdParsed object built from the flat
-      // fields returned by the Match agent. Flat fields are kept as-is for
-      // backwards compatibility with existing clients.
       const jdParsed = {
         requiredSkills: Array.isArray(matchResult.jdRequiredSkills)
           ? matchResult.jdRequiredSkills
@@ -51,6 +47,8 @@ const matchController = {
         jdParsed,
       }, userId);
 
+      await userService.recordUsage(userId, 'matches').catch(() => null);
+
       res.status(201).json(saved);
     } catch (err) {
       console.error('Match error:', err);
@@ -70,9 +68,8 @@ const matchController = {
 
   async listByRecord(req, res) {
     try {
-      const { recordId } = req.params;
       const limit = parseInt(req.query.limit) || 20;
-      const matches = await matchService.listByRecord(recordId, req.user.uid, limit);
+      const matches = await matchService.listByRecord(req.params.recordId, req.user.uid, limit);
       res.json(matches);
     } catch (err) {
       handleError(res, err);

@@ -22,10 +22,12 @@ function validate(schema, source = 'body') {
   return (req, res, next) => {
     const result = schema.safeParse(req[source]);
     if (!result.success) {
+      const issues = formatIssues(result.error);
+      console.warn(`[Validation 400] ${req.method} ${req.originalUrl}:`, issues);
       return res.status(400).json({
         error: 'Validation failed',
         source,
-        details: formatIssues(result.error),
+        details: issues,
       });
     }
     // Do not replace req[source] with the parsed value: zod strips unknown

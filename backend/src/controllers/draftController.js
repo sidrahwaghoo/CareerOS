@@ -1,9 +1,10 @@
-const { DraftService, CareerRecordService, MatchService } = require('../services/firestoreService');
+const { DraftService, CareerRecordService, MatchService, UserService } = require('../services/firestoreService');
 const { GeminiService } = require('../services/geminiService');
 
 const draftService = new DraftService();
 const careerRecordService = new CareerRecordService();
 const matchService = new MatchService();
+const userService = new UserService();
 const geminiService = new GeminiService();
 
 function handleError(res, err) {
@@ -11,8 +12,6 @@ function handleError(res, err) {
   res.status(status).json({ error: (err && err.message) || 'Internal server error' });
 }
 
-// Build a human-approval history entry (HI-01). The actor is the authenticated
-// user's Firebase UID — it always comes from the verified token, never the body.
 function buildApprovalEntry(draft, action, actor) {
   return {
     action,
@@ -32,7 +31,7 @@ function appendApprovalHistory(draft, action, actor) {
 const draftController = {
   async create(req, res) {
     try {
-      const { recordId, matchId, jobDescription } = req.body;
+      const { recordId, matchId, jobDescription, style = 'modern' } = req.body;
       const userId = req.user.uid;
 
       if (!recordId || !matchId || !jobDescription) {
@@ -45,14 +44,17 @@ const draftController = {
       const match = await matchService.get(matchId, userId);
       if (!match) return res.status(404).json({ error: 'Match result not found' });
 
-      const draftContent = await geminiService.draft(record, match, jobDescription);
+      const draftContent = await geminiService.draft(record, match, jobDescription, style);
       const saved = await draftService.create({
         recordId,
         recordVersion: record.version,
         matchId,
+        style,
         content: draftContent,
         status: 'draft',
       }, userId);
+
+      await userService.recordUsage(userId, 'drafts').catch(() => null);
 
       res.status(201).json(saved);
     } catch (err) {
@@ -73,58 +75,93 @@ const draftController = {
 
   async update(req, res) {
     try {
-      const draft = await draftService.update(req.params.id, req.body, req.user.uid);
-      if (!draft) return res.status(404).json({ error: 'Draft not found' });
-      res.json(draft);
+      const draftId = req.params.id;
+      const userId = req.user.uid;
+
+      const existing = await draftService.get(draftId, userId);
+      if (!existing) return res.status(404).json({ error: 'Draft not found' });
+
+      const nextStatus = req.body.status || 'edited';
+      const historyAction =
+        nextStatus === 'approved'
+          ? 'approve'
+          : nextStatus === 'rejected'
+            ? 'reject'
+            : 'edit';
+
+      const approvalHistory = appendApprovalHistory(existing, historyAction, userId);
+
+      const updatePayload = {
+        ...req.body,
+        status: nextStatus,
+        approvalHistory,
+      };
+
+      if (nextStatus === 'approved') {
+        updatePayload.approvedAt = new Date();
+      }
+
+      const updated = await draftService.update(draftId, updatePayload, userId);
+      res.json(updated);
     } catch (err) {
+      console.error('Draft update error:', err);
       handleError(res, err);
     }
   },
 
-  // PRD HI-01: POST /api/drafts/:id/approve
   async approve(req, res) {
     try {
+      const draftId = req.params.id;
       const userId = req.user.uid;
-      const draft = await draftService.get(req.params.id, userId);
-      if (!draft) return res.status(404).json({ error: 'Draft not found' });
 
-      const updated = await draftService.update(req.params.id, {
-        status: 'approved',
-        approvedAt: new Date(),
-        approvalHistory: appendApprovalHistory(draft, 'approve', userId),
-      }, userId);
+      const existing = await draftService.get(draftId, userId);
+      if (!existing) return res.status(404).json({ error: 'Draft not found' });
+
+      const approvalHistory = appendApprovalHistory(existing, 'approve', userId);
+      const updated = await draftService.update(
+        draftId,
+        {
+          status: 'approved',
+          approvedAt: new Date(),
+          approvalHistory,
+        },
+        userId
+      );
 
       res.json(updated);
     } catch (err) {
-      console.error('Draft approve error:', err);
       handleError(res, err);
     }
   },
 
-  // PRD HI-01: POST /api/drafts/:id/reject
   async reject(req, res) {
     try {
+      const draftId = req.params.id;
       const userId = req.user.uid;
-      const draft = await draftService.get(req.params.id, userId);
-      if (!draft) return res.status(404).json({ error: 'Draft not found' });
 
-      const updated = await draftService.update(req.params.id, {
-        status: 'rejected',
-        approvalHistory: appendApprovalHistory(draft, 'reject', userId),
-      }, userId);
+      const existing = await draftService.get(draftId, userId);
+      if (!existing) return res.status(404).json({ error: 'Draft not found' });
+
+      const approvalHistory = appendApprovalHistory(existing, 'reject', userId);
+      const updated = await draftService.update(
+        draftId,
+        {
+          status: 'rejected',
+          approvalHistory,
+        },
+        userId
+      );
 
       res.json(updated);
     } catch (err) {
-      console.error('Draft reject error:', err);
       handleError(res, err);
     }
   },
 
   async listByRecord(req, res) {
     try {
-      const { recordId } = req.params;
       const limit = parseInt(req.query.limit) || 20;
-      const drafts = await draftService.listByRecord(recordId, req.user.uid, limit);
+      const drafts = await draftService.listByRecord(req.params.recordId, req.user.uid, limit);
       res.json(drafts);
     } catch (err) {
       handleError(res, err);

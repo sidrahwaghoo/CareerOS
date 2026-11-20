@@ -1,123 +1,339 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@400;500&family=Saira+Condensed:wght@400;500&display=swap');
 @import "tailwindcss";
 
+/*
+  BUGATTI DESIGN SYSTEM ARCHITECTURE (DESIGN.md)
+  Pure Pitch Black OLED canvas (#000000), white letterspaced uppercase display,
+  serif executive prose, precision monospace controls, 1px hairlines, and zero superfluous chrome.
+*/
+
 @theme {
-  --color-void: #12110f;
-  --color-page: #161513;
-  --color-surface: #1c1a18;
-  --color-raised: #262421;
-  --color-ink: #c2a15a;
-  --color-ink-soft: #b8975a;
-  --color-ink-dim: #8a7340;
-  --color-txt: #efe9de;
-  --color-txt-2: #aaa398;
-  --color-txt-3: #8a847a;
-  --color-line: rgba(239, 233, 222, 0.08);
-  --color-line-strong: rgba(239, 233, 222, 0.16);
-  --color-ok: #4cc38a;
-  --color-bad: #e5484d;
+  --color-canvas: #000000;
+  --color-surface-soft: #0d0d0d;
+  --color-surface-card: #141414;
+  --color-surface-elevated: #1f1f1f;
 
-  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --color-hairline: #262626;
+  --color-hairline-strong: #3a3a3a;
 
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --color-primary: #ffffff;
+  --color-ink: #ffffff;
+  --color-on-dark: #ffffff;
+
+  --color-body: #cccccc;
+  --color-body-strong: #e6e6e6;
+  --color-muted: #999999;
+  --color-muted-soft: #666666;
+
+  /* The single Bugatti chromatic token */
+  --color-link: #c3d9f3;
+  --color-warning: #d4a017;
+  --color-success: #5fa657;
+
+  /* Legacy alias mappings for seamless backward compatibility */
+  --color-void: #000000;
+  --color-page: #000000;
+  --color-surface: #0d0d0d;
+  --color-raised: #141414;
+  --color-elevated: #1f1f1f;
+  --color-txt: #ffffff;
+  --color-txt-2: #cccccc;
+  --color-txt-3: #999999;
+  --color-line: #262626;
+  --color-line-strong: #3a3a3a;
+  --color-accent: #c3d9f3;
+  --color-ok: #5fa657;
+  --color-bad: #e11d48;
+
+  --font-display: 'Saira Condensed', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-serif: 'Cormorant Garamond', Garamond, 'Times New Roman', Georgia, serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+
+  --ease-bugatti: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @layer base {
-  :root { color-scheme: dark; }
-  html, body, #root { height: 100%; }
-  body {
-    @apply bg-page text-txt;
-    font-family: var(--font-sans);
-    font-weight: 400;
-    -webkit-font-smoothing: antialiased;
+  :root {
+    color-scheme: dark;
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
   }
-  h1, h2, h3, h4 { font-weight: 500; letter-spacing: -0.01em; }
-  button, input, textarea, select { font-family: inherit; }
-  ::selection { background: rgba(194, 161, 90, 0.25); }
+
+  html, body, #root {
+    height: 100%;
+    background-color: #000000;
+    color: #ffffff;
+  }
+
+  body {
+    background-color: #000000;
+    color: #cccccc;
+    font-family: var(--font-serif);
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: 0;
+  }
+
+  /* Bugatti Display Headlines — UPPERCASE, weight 400, wide-tracked */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    text-transform: uppercase;
+    color: #ffffff;
+    letter-spacing: 0.15em;
+  }
+
+  button, input, textarea, select {
+    font-family: var(--font-mono);
+  }
+
+  ::selection {
+    background: #ffffff;
+    color: #000000;
+  }
+
+  /* Bugatti Precision OLED Hairline Scrollbar */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #000000;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #262626;
+    border-radius: 0px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3a3a3a;
+  }
 }
 
 @layer components {
-  .hairline { border-color: var(--color-line); }
+  /* Bugatti Wordmark typography */
+  .bugatti-wordmark {
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: 0.38em;
+    text-transform: uppercase;
+    color: #ffffff;
+    line-height: 1;
+  }
 
-  .input-field {
-    @apply w-full px-3 py-2.5 rounded-lg text-sm outline-none;
-    background: var(--color-raised);
-    border: 1px solid var(--color-line);
-    color: var(--color-txt);
-    transition: border-color 140ms var(--ease-out), box-shadow 140ms var(--ease-out);
+  /* Bugatti Display Headline tokens */
+  .display-xl {
+    font-family: var(--font-display);
+    font-size: clamp(32px, 5vw, 64px);
+    font-weight: 400;
+    line-height: 1.1;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #ffffff;
   }
-  .input-field:focus {
-    border-color: var(--color-ink-dim);
-    box-shadow: 0 0 0 3px rgba(194, 161, 90, 0.12);
-  }
-  .input-field::placeholder { color: var(--color-txt-3); }
 
-  .cred-btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium;
-    transition: background-color 140ms var(--ease-out), border-color 140ms var(--ease-out), color 140ms var(--ease-out);
-    background: var(--color-ink);
-    color: var(--color-void);
+  .display-lg {
+    font-family: var(--font-display);
+    font-size: clamp(24px, 3.5vw, 44px);
+    font-weight: 400;
+    line-height: 1.15;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #ffffff;
   }
-  .cred-btn-primary:hover { background: #d0b16b; }
-  .cred-btn-primary:active { transform: scale(0.98); }
-  .cred-btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium;
-    transition: background-color 140ms var(--ease-out), border-color 140ms var(--ease-out), color 140ms var(--ease-out);
-    background: var(--color-raised);
-    border: 1px solid var(--color-line);
-    color: var(--color-txt);
+
+  .display-md {
+    font-family: var(--font-display);
+    font-size: clamp(20px, 2.5vw, 28px);
+    font-weight: 400;
+    line-height: 1.2;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #ffffff;
   }
-  .cred-btn-secondary:hover { background: #2e2b27; }
-  .cred-btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium;
-    transition: background-color 140ms var(--ease-out), border-color 140ms var(--ease-out), color 140ms var(--ease-out);
+
+  .caption-mono {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.4;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+  }
+
+  /* 
+    BUGATTI BUTTON-PRIMARY
+    Background transparent, text #ffffff, 1px white outline, rounded.pill (9999px),
+    Bugatti Monospace 14px, uppercase, 2.5px tracking. Tactile active:scale-[0.98].
+  */
+  .btn-bugatti-primary, .cred-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
     background: transparent;
-    color: var(--color-txt-2);
+    color: #ffffff;
+    border: 1px solid #ffffff;
+    border-radius: 9999px;
+    padding: 10px 26px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    transition: all 180ms var(--ease-bugatti);
+    cursor: pointer;
   }
-  .cred-btn-ghost:hover { background: var(--color-raised); color: var(--color-txt); }
+  .btn-bugatti-primary:hover, .cred-btn-primary:hover {
+    background: #ffffff;
+    color: #000000;
+    box-shadow: 0 0 24px rgba(255, 255, 255, 0.25);
+  }
+  .btn-bugatti-primary:active, .cred-btn-primary:active {
+    transform: scale(0.98);
+  }
 
-  .card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-line);
-    border-radius: 14px;
+  /* BUGATTI BUTTON-SECONDARY */
+  .btn-bugatti-secondary, .cred-btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: transparent;
+    color: #cccccc;
+    border: 1px solid #262626;
+    border-radius: 9999px;
+    padding: 10px 24px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    transition: all 180ms var(--ease-bugatti);
+    cursor: pointer;
+  }
+  .btn-bugatti-secondary:hover, .cred-btn-secondary:hover {
+    color: #ffffff;
+    border-color: #ffffff;
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .btn-bugatti-secondary:active, .cred-btn-secondary:active {
+    transform: scale(0.98);
+  }
+
+  /* BUGATTI GHOST BUTTON */
+  .btn-bugatti-ghost, .cred-btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: transparent;
+    color: #999999;
+    border: none;
+    border-radius: 9999px;
+    padding: 8px 16px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    transition: all 150ms ease;
+    cursor: pointer;
+  }
+  .btn-bugatti-ghost:hover, .cred-btn-ghost:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  /* BUGATTI CARD / PANEL: 0px sharp corners, #141414 canvas, 1px hairline #262626 */
+  .bugatti-card, .card, .oled-card {
+    background-color: #141414;
+    border: 1px solid #262626;
+    border-radius: 0px !important;
     padding: 24px;
+    transition: border-color 200ms ease;
+  }
+  .bugatti-card:hover, .card:hover, .oled-card:hover {
+    border-color: #3a3a3a;
   }
 
+  /* BUGATTI TEXT INPUT: Underline-only hairline, transparent, 0px border radius */
+  .bugatti-input, .input-field {
+    width: 100%;
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 1px solid #3a3a3a !important;
+    border-radius: 0px !important;
+    padding: 12px 0 !important;
+    color: #ffffff !important;
+    font-family: var(--font-serif);
+    font-size: 15px;
+    line-height: 1.5;
+    outline: none;
+    transition: border-color 180ms ease;
+  }
+  .bugatti-input:focus, .input-field:focus {
+    border-bottom-color: #ffffff !important;
+  }
+  .bugatti-input::placeholder, .input-field::placeholder {
+    color: #666666;
+  }
+
+  /* BUGATTI MONOSPACE BADGE / PILL */
   .badge {
     font-family: var(--font-mono);
     font-size: 11px;
-    letter-spacing: 0.02em;
-    color: var(--color-txt-2);
-    background: var(--color-raised);
-    border-radius: 6px;
-    padding: 2px 8px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #cccccc;
+    background: transparent;
+    border: 1px solid #262626;
+    border-radius: 9999px;
+    padding: 3px 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 140ms ease;
   }
-  .text-ok { color: var(--color-ok); }
-  .text-bad { color: var(--color-bad); }
+  .badge:hover {
+    border-color: #3a3a3a;
+    color: #ffffff;
+  }
+
+  /* BUGATTI LINK (The single non-monochrome token: #c3d9f3) */
+  .text-link {
+    color: #c3d9f3;
+    font-family: var(--font-serif);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    transition: opacity 150ms ease;
+  }
+  .text-link:hover {
+    opacity: 0.8;
+  }
 
   .meta {
     font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--color-txt-3);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #999999;
     font-variant-numeric: tabular-nums;
   }
 
-  /* Signature: thin left-edge ink rule marking the active item */
-  .active-rule {
-    position: relative;
+  .hairline-b {
+    border-bottom: 1px solid #262626;
   }
-  .active-rule::before {
-    content: '';
-    position: absolute;
-    left: 0; top: 8px; bottom: 8px;
-    width: 2px;
-    background: var(--color-ink);
-    border-radius: 2px;
+  .hairline-t {
+    border-top: 1px solid #262626;
   }
-
-  .focus-ring:focus-visible {
-    outline: 2px solid var(--color-ink-dim);
-    outline-offset: 2px;
+  .hairline-r {
+    border-right: 1px solid #262626;
+  }
+  .hairline-l {
+    border-left: 1px solid #262626;
   }
 }

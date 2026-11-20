@@ -32,22 +32,16 @@ const privateKey = rawPrivateKey.replace(/^["']|["']$/g, '').replace(/\\n/g, '\n
 
 const serviceAccount = { projectId, clientEmail, privateKey };
 
+let app = null;
 let admin = null;
 let firestore = null;
 
 try {
-  // Reuse an already-initialized app (important for hot reload / tests) and
-  // derive Firestore from that app so it uses the service-account credentials.
-  let app;
-  const apps = firebaseAdmin.getApps();
-  if (apps.length === 0) {
-    app = firebaseAdmin.initializeApp({
-      credential: firebaseAdmin.credential.cert(serviceAccount),
-      projectId,
-    });
-  } else {
-    app = apps[0];
-  }
+  const serviceAccountConfig = {
+    credential: firebaseAdmin.credential.cert(serviceAccount),
+    projectId,
+  };
+  app = firebaseAdmin.initializeApp(serviceAccountConfig);
   admin = firebaseAdmin;
   firestore = app.firestore();
 } catch (err) {

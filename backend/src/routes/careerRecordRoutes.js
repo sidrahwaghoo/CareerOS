@@ -12,6 +12,7 @@ router.get('/', controller.list);
 // Must be declared before /:id so it is not captured as a record id.
 router.get('/me', controller.me);
 router.get('/:id', controller.get);
+router.post('/:id/dna', controller.getDNA);
 router.put('/:id', validateBody(schemas.careerRecordSchema), controller.update);
 router.delete('/:id', controller.delete);
 

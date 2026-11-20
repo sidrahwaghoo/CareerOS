@@ -1,6 +1,8 @@
 const { CareerRecordService } = require('../services/firestoreService');
+const { GeminiService } = require('../services/geminiService');
 
 const careerRecordService = new CareerRecordService();
+const geminiService = new GeminiService();
 
 // Map service errors (e.g. ForbiddenError status 403) to an HTTP response.
 function handleError(res, err) {
@@ -57,7 +59,19 @@ const careerRecordController = {
     try {
       const limit = parseInt(req.query.limit) || 50;
       const records = await careerRecordService.list(req.user.uid, limit);
-      res.json(records);
+      res.json(Array.isArray(records) ? records : []);
+    } catch (err) {
+      console.warn('List records fallback:', err.message);
+      res.json([]);
+    }
+  },
+
+  async getDNA(req, res) {
+    try {
+      const record = await careerRecordService.get(req.params.id, req.user.uid);
+      if (!record) return res.status(404).json({ error: 'Record not found' });
+      const dna = await geminiService.analyzeCareerDNA(record);
+      res.json(dna);
     } catch (err) {
       handleError(res, err);
     }

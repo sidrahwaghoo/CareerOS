@@ -1,10 +1,11 @@
-require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+require('dotenv').config(); // also check current working directory
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimitModule = require('express-rate-limit');
-const path = require('path');
-const fs = require('fs');
 
 // Both config modules enforce real credentials. firebase.js throws at startup
 // if any Firebase credential is missing, so the app never runs on a fake store.
@@ -20,6 +21,10 @@ const matchRoutes = require('./src/routes/matchRoutes');
 const draftRoutes = require('./src/routes/draftRoutes');
 const reviewRoutes = require('./src/routes/reviewRoutes');
 const exportRoutes = require('./src/routes/exportRoutes');
+const resumeRoutes = require('./src/routes/resumeRoutes');
+const userRoutes = require('./src/routes/userRoutes');
+const interviewRoutes = require('./src/routes/interviewRoutes');
+const chatRoutes = require('./src/routes/chatRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -85,6 +90,10 @@ app.use('/api/draft', draftRoutes);
 app.use('/api/drafts', draftRoutes);
 app.use('/api/review', reviewRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/resume', resumeRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api/interview', interviewRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Serve static frontend (for production)
 const publicDir = path.join(__dirname, 'public');
@@ -117,12 +126,14 @@ app.use((err, _req, res, next) => {
   res.status(status).json(payload);
 });
 
-app.listen(PORT, () => {
-  console.log(`Credensa backend running on port ${PORT}`);
-  console.log('Storage: Firestore');
-  console.log(
-    `AI: ${geminiConfigured ? 'Gemini (live)' : 'unconfigured (set GEMINI_API_KEY to enable AI agents)'}`
-  );
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Credensa backend running on port ${PORT}`);
+    console.log('Storage: Firestore');
+    console.log(
+      `AI: ${geminiConfigured ? 'Gemini (live)' : 'unconfigured (set GEMINI_API_KEY to enable AI agents)'}`
+    );
+  });
+}
 
 module.exports = app;

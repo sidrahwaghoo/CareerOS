@@ -8,12 +8,44 @@ import {
   ShieldCheck,
   Download,
   ArrowLeft,
-  X
+  Upload,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Sparkles,
+  FileText,
+  Layers,
+  MessageSquare,
+  Check,
+  ChevronRight,
+  Briefcase,
+  GraduationCap,
+  Award,
+  Sliders,
 } from 'lucide-react';
-import { careerRecordAPI, matchAPI, draftAPI, reviewAPI, exportAPI } from '../api';
-import type { CareerRecord, Experience, Project, Education, Skill, Achievement, MatchResult } from '../types';
+import {
+  careerRecordAPI,
+  matchAPI,
+  draftAPI,
+  reviewAPI,
+  interviewAPI,
+  exportAPI,
+  resumeAPI,
+} from '../api';
+import AICopilot from './AICopilot';
+import type {
+  CareerRecord,
+  Experience,
+  Project,
+  Education,
+  Skill,
+  Achievement,
+  MatchResult,
+  ResumeDraft,
+  InterviewPrepSession,
+  ResumeTemplateType,
+} from '../types';
 
-/** Turn an API failure into an honest, user-facing message. Never fake data. */
 function getErrorMessage(err: unknown, fallback: string): string {
   const e = err as { response?: { status?: number; data?: { error?: string } }; message?: string };
   const status = e?.response?.status;
@@ -21,12 +53,11 @@ function getErrorMessage(err: unknown, fallback: string): string {
   if (status === 401) return 'Sign in required';
   if (status === 403) return 'You do not have access to this record';
   if (serverMessage && /api[_ -]?key|gemini|not configured|credential|auth/i.test(serverMessage)) {
-    return 'AI not configured — contact administrator';
+    return 'AI service unconfigured — contact administrator';
   }
   return serverMessage || e?.message || fallback;
 }
 
-// Computes how much of a Career Record is filled out (0-100%).
 function computeCompleteness(record: CareerRecord | null): { percent: number; filled: number; total: number } {
   let filled = 0;
   let total = 0;
@@ -48,7 +79,6 @@ function computeCompleteness(record: CareerRecord | null): { percent: number; fi
   check(pi?.email);
   check(pi?.phone);
   check(pi?.linkedin);
-  check(pi?.portfolio);
 
   const experiences = record.experience || [];
   check(experiences.length > 0);
@@ -64,7 +94,6 @@ function computeCompleteness(record: CareerRecord | null): { percent: number; fi
   projects.forEach((project) => {
     check(project.name);
     check(project.description);
-    check((project.techStack || []).length > 0);
   });
 
   const education = record.education || [];
@@ -76,7 +105,7 @@ function computeCompleteness(record: CareerRecord | null): { percent: number; fi
 
   const skills = record.skills || [];
   check(skills.length > 0);
-  check(skills.some((skill) => (skill?.name || '').trim() !== ''));
+  check(skills.some((s) => (s?.name || '').trim() !== ''));
 
   return {
     percent: total === 0 ? 0 : Math.round((filled / total) * 100),
@@ -89,15 +118,24 @@ export default function RecordEditor({ recordId }: { recordId?: string }) {
   const [record, setRecord] = useState<CareerRecord | null>(null);
   const [saving, setSaving] = useState(false);
   const [jd, setJd] = useState('');
-  const [matchResult, setMatchResult] = useState<any>(null);
+  const [matchResult, setMatchResult] = useState<MatchResult | null>(null);
   const [matching, setMatching] = useState(false);
-  const [draft, setDraft] = useState<any>(null);
+  const [draft, setDraft] = useState<ResumeDraft | null>(null);
+  const [drafting, setDrafting] = useState(false);
+  const [draftStyle, setDraftStyle] = useState<'modern' | 'executive' | 'tech'>('modern');
   const [review, setReview] = useState<any>(null);
   const [reviewing, setReviewing] = useState(false);
-  const [view, setView] = useState<'record' | 'match' | 'draft' | 'export'>('record');
-  // Guards the automatic transition so "Back to Record" is respected until a
-  // brand-new match result arrives.
-  const [matchDismissed, setMatchDismissed] = useState(false);
+  const [interviewPrep, setInterviewPrep] = useState<InterviewPrepSession | null>(null);
+  const [generatingInterview, setGeneratingInterview] = useState(false);
+  const [activeTab, setActiveTab] = useState<'record' | 'match' | 'draft' | 'review' | 'interview' | 'export'>('record');
+  const [selectedTemplate, setSelectedTemplate] = useState<ResumeTemplateType>('modern');
+  const [copilotOpen, setCopilotOpen] = useState(false);
+
+  // Resume upload state
+  const [parsedRecord, setParsedRecord] = useState<any>(null);
+  const [isParsing, setIsParsing] = useState(false);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const completeness = computeCompleteness(record);
 
@@ -109,19 +147,13 @@ export default function RecordEditor({ recordId }: { recordId?: string }) {
     }
   }, [recordId]);
 
-  /**
-   * The Match view transition lives in an effect rather than only inside the
-   * click handler. This makes it reliable even when a parent re-render (for
-   * example an `onUpdated` callback that refreshes the record list) restores
-   * or overwrites the local `view` value: as soon as a real match result is
-   * present, the UI is driven to the Job Match Analysis view.
-   */
   useEffect(() => {
-    if (matchResult) {
-      setMatchDismissed(false);
-      setView('match');
-    }
-  }, [matchResult]);
+    if (!toastMessage) return;
+    const t = setTimeout(() => setToastMessage(null), 3200);
+    return () => clearTimeout(t);
+  }, [toastMessage]);
+
+  const showToast = (msg: string) => setToastMessage(msg);
 
   const loadRecord = async (id: string) => {
     try {
@@ -159,6 +191,7 @@ export default function RecordEditor({ recordId }: { recordId?: string }) {
         const { data } = await careerRecordAPI.create(record);
         setRecord(data);
       }
+      showToast('Career record saved');
     } catch (err) {
       alert(getErrorMessage(err, 'Failed to save record'));
     } finally {
@@ -166,7 +199,6 @@ export default function RecordEditor({ recordId }: { recordId?: string }) {
     }
   };
 
-  // Personal Info
   const updatePersonal = (field: string, value: string) => {
     if (!record) return;
     setRecord({
@@ -175,7 +207,6 @@ export default function RecordEditor({ recordId }: { recordId?: string }) {
     });
   };
 
-  // Experience
   const addExperience = () => {
     if (!record) return;
     const newExp: Experience = {
@@ -220,7 +251,6 @@ export default function RecordEditor({ recordId }: { recordId?: string }) {
     setRecord({ ...record, experience: record.experience.filter((_, i) => i !== index) });
   };
 
-  // Projects
   const addProject = () => {
     if (!record) return;
     const newProj: Project = {
@@ -247,7 +277,6 @@ export default function RecordEditor({ recordId }: { recordId?: string }) {
     setRecord({ ...record, projects: record.projects.filter((_, i) => i !== index) });
   };
 
-  // Education
   const addEducation = () => {
     if (!record) return;
     const newEdu: Education = {
@@ -273,10 +302,9 @@ export default function RecordEditor({ recordId }: { recordId?: string }) {
     setRecord({ ...record, education: record.education.filter((_, i) => i !== index) });
   };
 
-  // Skills
   const addSkill = () => {
     if (!record) return;
-    const newSkill: Skill = { name: '', level: 'Intermediate', years: 0 };
+    const newSkill: Skill = { name: '', level: 'Intermediate', years: 1 };
     setRecord({ ...record, skills: [...record.skills, newSkill] });
   };
 
@@ -292,667 +320,941 @@ export default function RecordEditor({ recordId }: { recordId?: string }) {
     setRecord({ ...record, skills: record.skills.filter((_, i) => i !== index) });
   };
 
-  // Match flow
+  // Agent Actions
   const handleMatch = async () => {
-    if (!record || !jd) return;
+    if (!record?.id || !jd) {
+      if (!record?.id) showToast('Save your record first to match against opportunities');
+      return;
+    }
     setMatching(true);
     try {
-      const { data } = await matchAPI.create({ recordId: record.id!, jobDescription: jd });
-      // Normalise the response so a proxy envelope can never leave us with a
-      // null result while `view` says "match".
-      const result = (data && typeof data === 'object' && 'match' in data
-        ? (data as any).match
-        : data) as MatchResult;
-      setMatchDismissed(false);
-      setMatchResult(result);
-      setView('match'); // immediate transition; the effect above backs it up
+      const { data } = await matchAPI.create({ recordId: record.id, jobDescription: jd });
+      setMatchResult(data);
+      setActiveTab('match');
+      showToast('Opportunity fit calculated');
     } catch (err) {
-      alert(getErrorMessage(err, 'Failed to generate match'));
+      alert(getErrorMessage(err, 'Failed to generate match analysis'));
     } finally {
       setMatching(false);
     }
   };
 
-  const backToRecord = () => {
-    setMatchDismissed(true);
-    setView('record');
-  };
-
-  // Draft flow
   const handleDraft = async () => {
-    if (!matchResult || !record) return;
+    if (!record?.id || !matchResult?.id) return;
+    setDrafting(true);
     try {
       const { data } = await draftAPI.create({
-        recordId: record.id!,
+        recordId: record.id,
         matchId: matchResult.id,
-        jobDescription: matchResult.jdText,
+        jobDescription: jd,
+        style: draftStyle,
       });
       setDraft(data);
-      setView('draft');
+      setActiveTab('draft');
+      showToast('Tailored resume drafted');
     } catch (err) {
-      alert(getErrorMessage(err, 'Failed to generate draft'));
+      alert(getErrorMessage(err, 'Failed to generate tailored resume'));
+    } finally {
+      setDrafting(false);
     }
   };
 
-  // Review flow
   const handleReview = async () => {
-    if (!draft || !matchResult) return;
+    if (!draft?.id) return;
     setReviewing(true);
     try {
       const { data } = await reviewAPI.create({
         draftId: draft.id,
-        jobDescription: matchResult.jdText,
+        jobDescription: jd,
       });
-      setDraft({ ...draft, reviewResult: data.reviewResult });
       setReview(data.reviewResult);
+      setActiveTab('review');
+      showToast('ATS review complete');
     } catch (err) {
-      alert(getErrorMessage(err, 'Failed to review draft'));
+      alert(getErrorMessage(err, 'Failed to run ATS review'));
     } finally {
       setReviewing(false);
     }
   };
 
-  // Keep parent draft state in sync after an inline edit or rejection.
-  // Clearing the review forces the user to re-run ATS review on edited content.
-  const handleDraftUpdated = (updated: any) => {
-    setDraft(updated);
-    setReview(null);
+  const handleInterviewPrep = async () => {
+    if (!record?.id || !matchResult?.id) return;
+    setGeneratingInterview(true);
+    try {
+      const { data } = await interviewAPI.generate({
+        recordId: record.id,
+        matchId: matchResult.id,
+        jobDescription: jd,
+      });
+      setInterviewPrep(data);
+      setActiveTab('interview');
+      showToast('Interview coach session generated');
+    } catch (err) {
+      alert(getErrorMessage(err, 'Failed to generate interview prep'));
+    } finally {
+      setGeneratingInterview(false);
+    }
   };
 
-  // Export flow
   const handleApprove = async () => {
-    if (!draft) return;
+    if (!draft?.id) return;
     try {
       await exportAPI.approve(draft.id);
       setDraft({ ...draft, status: 'approved' });
+      setActiveTab('export');
+      showToast('Draft approved and ready for PDF export');
     } catch (err) {
-      alert(getErrorMessage(err, 'Failed to approve'));
+      alert(getErrorMessage(err, 'Failed to approve draft'));
     }
   };
 
   const handleDownloadPDF = async () => {
-    if (!draft) return;
+    if (!draft?.id) return;
     try {
-      const { data } = await exportAPI.pdf(draft.id);
+      const { data } = await exportAPI.pdf(draft.id, selectedTemplate);
       const url = URL.createObjectURL(data);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'credensa-resume.pdf';
+      a.download = `credensa_${(record?.personalInfo?.name || 'resume').replace(/\s+/g, '_')}_${selectedTemplate}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
+      showToast('Resume PDF downloaded');
     } catch (err) {
       alert(getErrorMessage(err, 'Failed to download PDF'));
     }
   };
 
-  // The Match view is driven by the real result plus an explicit "dismissed"
-  // flag — not by the `view` string alone. That way a parent re-render (for
-  // example an `onUpdated` callback refreshing the record list) cannot drop us
-  // back to the record editor while a fresh match result is on screen. Draft
-  // and export views take precedence.
-  if (matchResult && !matchDismissed && (view === 'record' || view === 'match')) {
-    return <MatchView matchResult={matchResult} jd={jd} record={record} onBack={backToRecord} onDraft={handleDraft} />;
-  }
-  if (view === 'draft') return <DraftView draft={draft} matchResult={matchResult} record={record!} onBack={() => setView('match')} onReview={handleReview} onApprove={handleApprove} onDownloadPDF={handleDownloadPDF} reviewing={reviewing} review={review} onUpdated={handleDraftUpdated} />;
-  if (view === 'export') return <ExportView draft={draft} record={record} onBack={() => setView('draft')} />;
+  const handleDownloadCoverLetter = async () => {
+    if (!draft?.id) return;
+    try {
+      const { data } = await exportAPI.coverLetter(draft.id);
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `cover_letter_${(record?.personalInfo?.name || 'candidate').replace(/\s+/g, '_')}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Cover letter PDF downloaded');
+    } catch (err) {
+      alert(getErrorMessage(err, 'Failed to download Cover Letter PDF'));
+    }
+  };
+
+  const handleResumeUpload = async (file: File) => {
+    setIsParsing(true);
+    setParseError(null);
+    try {
+      const { data } = await resumeAPI.parse(file);
+      setParsedRecord(data);
+      applyParsedRecord(data);
+      showToast(`Resume extracted (${data.source === 'gemini-ai' ? 'Gemini 2.0 AI' : 'Regex parser'})`);
+    } catch (err) {
+      setParseError(getErrorMessage(err, 'Failed to parse resume'));
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const applyParsedRecord = (data: any) => {
+    if (!record) return;
+    setRecord({
+      ...record,
+      personalInfo: {
+        name: data.name || record.personalInfo.name,
+        headline: data.headline || record.personalInfo.headline,
+        location: data.location || record.personalInfo.location,
+        email: data.email || record.personalInfo.email,
+        phone: data.phone || record.personalInfo.phone,
+        linkedin: data.linkedin || record.personalInfo.linkedin,
+        portfolio: record.personalInfo.portfolio,
+      },
+      experience: [
+        ...record.experience,
+        ...(data.experience || []).map((e: any) => ({
+          id: crypto.randomUUID(),
+          company: e.company || '',
+          role: e.role || '',
+          startDate: e.startDate || '',
+          endDate: e.endDate || null,
+          current: e.current || false,
+          achievements: (e.achievements || []).map((ach: string) => ({ text: ach, metric: null })),
+          skillsUsed: e.skillsUsed || [],
+        })),
+      ],
+      education: [
+        ...record.education,
+        ...(data.education || []).map((e: any) => ({
+          id: crypto.randomUUID(),
+          degree: e.degree || '',
+          institution: e.institution || '',
+          startDate: e.startDate || '',
+          endDate: e.endDate || null,
+          honors: e.honors || '',
+        })),
+      ],
+      skills: [
+        ...record.skills,
+        ...(data.skills || []).map((s: string) => ({
+          id: crypto.randomUUID(),
+          name: s,
+          level: 'Intermediate',
+          years: 1,
+        })),
+      ],
+    });
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-start">
-        <div className="flex-1">
-          <h1 className="text-2xl text-txt">Career Record</h1>
-          <p className="text-txt-2 text-sm">Build your structured career history.</p>
-          {/* Completeness score — the record's one "moment". Inline width so Tailwind compiles it. */}
-          <div className="mt-4 max-w-sm">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs text-txt-2">Record completeness</span>
-              <span className="meta">{completeness.percent}%  ·  {completeness.filled}/{completeness.total} fields</span>
+      {/* Studio Navigation Bar */}
+      <div className="border-b border-line pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <nav aria-label="Studio navigation" className="flex items-center gap-1 overflow-x-auto pb-1 max-w-full scrollbar-none">
+          {[
+            { id: 'record', label: 'Record', icon: FileText },
+            { id: 'match', label: 'Opportunity Radar', icon: Target, disabled: !matchResult && !jd },
+            { id: 'draft', label: 'Tailored Studio', icon: Layers, disabled: !draft },
+            { id: 'review', label: 'ATS Review', icon: ShieldCheck, disabled: !draft },
+            { id: 'interview', label: 'Interview Coach', icon: MessageSquare, disabled: !matchResult },
+            { id: 'export', label: 'Export', icon: Download, disabled: !draft },
+          ].map((tab) => {
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                disabled={tab.disabled}
+                className={`h-9 px-2.5 sm:px-3 rounded-lg text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2 shrink-0 focus-ring transition-colors ${
+                  active
+                    ? 'bg-raised text-txt border border-line-strong'
+                    : tab.disabled
+                    ? 'text-txt-3 opacity-40 cursor-not-allowed'
+                    : 'text-txt-2 hover:bg-raised hover:text-txt'
+                }`}
+              >
+                <tab.icon className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${active ? 'text-ink' : 'text-txt-3'}`} strokeWidth={1.5} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="flex items-center justify-end gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setCopilotOpen(true)}
+            className="h-9 px-2.5 sm:px-3 rounded-lg border border-line-strong bg-raised hover:bg-page text-txt text-xs flex items-center gap-1.5 focus-ring"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-ink" strokeWidth={1.5} />
+            <span>Ask Copilot</span>
+          </button>
+          {activeTab === 'record' && (
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="cred-btn-primary h-9 px-3 sm:px-4 text-xs sm:text-sm disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" strokeWidth={1.5} />}
+              <span>{saving ? 'Saving' : 'Save record'}</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {toastMessage && (
+        <div className="rounded-lg bg-raised border border-line-strong text-txt text-xs px-4 py-2.5 flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-ok shrink-0" strokeWidth={1.5} />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* 1. CAREER RECORD */}
+      {activeTab === 'record' && (
+        <div className="space-y-6">
+          {/* Completeness Card */}
+          <div className="card">
+            <div className="flex justify-between items-start mb-2">
+              <div>
+                <h2 className="text-base font-medium text-txt">Career Record</h2>
+                <p className="text-xs text-txt-2 mt-0.5">The ground truth for your experience. AI only sharpens what is recorded here.</p>
+              </div>
+              <div className="text-right meta">
+                {completeness.percent}%  ·  {completeness.filled}/{completeness.total} fields
+              </div>
             </div>
-            <div className="w-full bg-void rounded-full h-1.5 border border-line">
+            <div className="w-full bg-void rounded-full h-1.5 border border-line mt-3">
               <div
-                className="h-1.5 rounded-full bg-ink"
-                style={{ width: `${completeness.percent}%`, transition: 'width 360ms var(--ease-out)' }}
+                className="h-1.5 rounded-full bg-ink transition-all duration-300"
+                style={{ width: `${completeness.percent}%` }}
               />
             </div>
           </div>
-        </div>
-        <button onClick={handleSave} className="cred-btn-primary disabled:opacity-50 disabled:cursor-not-allowed" disabled={saving}>
-          <Save className="w-4 h-4 mr-2" /> {saving ? 'Saving...' : 'Save Record'}
-        </button>
-      </div>
 
-      {/* Personal Info */}
-      <div className="card">
-        <h2 className="text-lg font-medium mb-4 flex items-center gap-2">
-          Personal Information
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-txt mb-1">Full Name</label>
-            <input className="input-field" value={record?.personalInfo?.name || ''} onChange={(e) => updatePersonal('name', e.target.value)} placeholder="Your full name" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-txt mb-1">Headline</label>
-            <input className="input-field" value={record?.personalInfo?.headline || ''} onChange={(e) => updatePersonal('headline', e.target.value)} placeholder="e.g. Senior Software Engineer" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-txt mb-1">Location</label>
-            <input className="input-field" value={record?.personalInfo?.location || ''} onChange={(e) => updatePersonal('location', e.target.value)} placeholder="City, Country" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-txt mb-1">Email</label>
-            <input className="input-field" type="email" value={record?.personalInfo?.email || ''} onChange={(e) => updatePersonal('email', e.target.value)} placeholder="you@example.com" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-txt mb-1">Phone</label>
-            <input className="input-field" type="tel" value={record?.personalInfo?.phone || ''} onChange={(e) => updatePersonal('phone', e.target.value)} placeholder="+1 555 000 0000" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-txt mb-1">LinkedIn</label>
-            <input className="input-field" value={record?.personalInfo?.linkedin || ''} onChange={(e) => updatePersonal('linkedin', e.target.value)} placeholder="linkedin.com/in/your-handle" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-txt mb-1">Portfolio</label>
-            <input className="input-field" value={record?.personalInfo?.portfolio || ''} onChange={(e) => updatePersonal('portfolio', e.target.value)} placeholder="https://your-site.com" />
-          </div>
-        </div>
-      </div>
+          {/* Resume Import */}
+          <div className="card">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-sm font-medium text-txt">Import from resume</h3>
+              <span className="meta">PDF or Word DOCX</span>
+            </div>
 
-      {/* Experience */}
-      <div className="card">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-medium">Experience</h2>
-          <button onClick={addExperience} className="flex items-center gap-1 text-ink hover:text-txt text-sm font-medium">
-            <Plus className="w-3 h-3" /> Add Experience
-          </button>
-        </div>
-        {record?.experience.map((exp, idx) => (
-          <div key={exp.id} className="border rounded-lg p-4 mb-3">
-            <div className="flex justify-between items-start mb-3">
-              <div className="flex-1">
-                <input className="input-field text-sm" value={exp.company} onChange={(e) => updateExp(idx, 'company', e.target.value)} placeholder="Company" />
-                <input className="input-field text-sm mt-1" value={exp.role} onChange={(e) => updateExp(idx, 'role', e.target.value)} placeholder="Role/Title" />
+            <label className="flex flex-col items-center justify-center p-6 rounded-xl border border-line-strong border-dashed hover:bg-raised cursor-pointer transition">
+              <input
+                type="file"
+                accept=".pdf,.docx"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files?.[0]) handleResumeUpload(e.target.files[0]);
+                }}
+              />
+              <Upload className="w-5 h-5 text-txt-3 mb-2" strokeWidth={1.5} />
+              <span className="text-sm text-txt font-medium">Upload resume file</span>
+              <span className="text-xs text-txt-3 mt-1">Extracts contact information, roles, projects, and skills into your record</span>
+            </label>
+
+            {isParsing && (
+              <div className="mt-3 flex items-center gap-2 text-xs text-txt-2">
+                <Loader2 className="w-4 h-4 animate-spin text-ink" />
+                <span>Extracting career data from document</span>
               </div>
-              <button onClick={() => removeExperience(idx)} className="text-red-500 hover:text-red-700">
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-              <input className="input-field text-sm" type="date" value={exp.startDate} onChange={(e) => updateExp(idx, 'startDate', e.target.value)} />
-              <input className="input-field text-sm" type="date" value={exp.endDate || ''} onChange={(e) => updateExp(idx, 'endDate', e.target.value || null)} placeholder="End date" />
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={exp.current} onChange={(e) => updateExp(idx, 'current', e.target.checked)} /> Current
-              </label>
-            </div>
-            <div className="mb-3">
-              <label className="block text-xs font-medium text-txt-3 mb-1 mb-1">Achievements (add metrics)</label>
-              {exp.achievements.map((ach, ai) => (
-                <div key={ai} className="flex gap-2 mb-2">
-                  <input className="flex-1 input-field text-sm" value={ach.text} onChange={(e) => updateAchievement(idx, ai, 'text', e.target.value)} placeholder="Improved system uptime" />
-                  <input className="w-32 input-field text-sm" value={ach.metric || ''} onChange={(e) => updateAchievement(idx, ai, 'metric', e.target.value)} placeholder="98.5% → 99.9%" />
-                  <button onClick={() => {
-                    const exps = [...record!.experience];
-                    exps[idx].achievements = exps[idx].achievements.filter((_, i) => i !== ai);
-                    setRecord({ ...record!, experience: exps });
-                  }} className="text-red-400 hover:text-red-600">
-                    <Trash2 className="w-3 h-3" />
+            )}
+
+            {parseError && (
+              <div className="mt-3 text-xs text-bad flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                <span>{parseError}</span>
+              </div>
+            )}
+
+            {parsedRecord && (
+              <div className="mt-4 p-4 bg-void border border-line rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-txt">Imported fields</span>
+                  <button onClick={() => setParsedRecord(null)} className="text-xs text-txt-3 hover:text-txt">
+                    Dismiss
                   </button>
                 </div>
-              ))}
-              <button onClick={() => addAchievement(idx)} className="text-xs text-ink hover:text-txt">
-                + Add achievement
-              </button>
-            </div>
-            <div className="mb-2">
-              <label className="block text-xs font-medium text-txt-3 mb-1">Skills used</label>
-              <input className="input-field text-sm" value={exp.skillsUsed.join(', ')} onChange={(e) => updateExp(idx, 'skillsUsed', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} placeholder="React, TypeScript, Figma" />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Projects */}
-      <div className="card">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-medium">Projects</h2>
-          <button onClick={addProject} className="flex items-center gap-1 text-ink hover:text-txt text-sm font-medium">
-            <Plus className="w-3 h-3" /> Add Project
-          </button>
-        </div>
-        {record?.projects.map((proj, idx) => (
-          <div key={proj.id} className="border rounded-lg p-4 mb-3">
-            <div className="flex justify-between items-start mb-3">
-              <input className="input-field text-sm" value={proj.name} onChange={(e) => updateProject(idx, 'name', e.target.value)} placeholder="Project Name" />
-              <button onClick={() => removeProject(idx)} className="text-red-500 hover:text-red-700">
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-            <input className="input-field text-sm mb-2" value={proj.role} onChange={(e) => updateProject(idx, 'role', e.target.value)} placeholder="Your Role" />
-            <textarea className="input-field text-sm mb-2" rows={2} value={proj.description} onChange={(e) => updateProject(idx, 'description', e.target.value)} placeholder="Describe the project" />
-            <input className="input-field text-sm mb-2" value={proj.techStack.join(', ')} onChange={(e) => updateProject(idx, 'techStack', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} placeholder="React, Node.js, PostgreSQL" />
-            <input className="input-field text-sm" value={proj.link || ''} onChange={(e) => updateProject(idx, 'link', e.target.value)} placeholder="GitHub/Live URL" />
-          </div>
-        ))}
-      </div>
-
-      {/* Education */}
-      <div className="card">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-medium">Education</h2>
-          <button onClick={addEducation} className="flex items-center gap-1 text-ink hover:text-txt text-sm font-medium">
-            <Plus className="w-3 h-3" /> Add Education
-          </button>
-        </div>
-        {record?.education.map((edu, idx) => (
-          <div key={edu.id} className="border rounded-lg p-4 mb-3">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-2">
-              <input className="input-field text-sm" value={edu.degree} onChange={(e) => updateEdu(idx, 'degree', e.target.value)} placeholder="B.Sc. Data Science" />
-              <input className="input-field text-sm" value={edu.institution} onChange={(e) => updateEdu(idx, 'institution', e.target.value)} placeholder="Institution" />
-              <input className="input-field text-sm" type="date" value={edu.startDate} onChange={(e) => updateEdu(idx, 'startDate', e.target.value)} />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
-              <input className="input-field text-sm" type="date" value={edu.endDate || ''} onChange={(e) => updateEdu(idx, 'endDate', e.target.value || null)} />
-              <input className="input-field text-sm" value={edu.honors} onChange={(e) => updateEdu(idx, 'honors', e.target.value)} placeholder="Honors/Awards" />
-            </div>
-            <button onClick={() => removeEducation(idx)} className="text-red-500 hover:text-red-700 text-sm">
-              Remove
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* Skills */}
-      <div className="card">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-medium">Skills</h2>
-          <button onClick={addSkill} className="flex items-center gap-1 text-ink hover:text-txt text-sm font-medium">
-            <Plus className="w-3 h-3" /> Add Skill
-          </button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {record?.skills.map((skill, idx) => (
-            <div key={idx} className="flex gap-2">
-              <input className="flex-1 input-field text-sm" value={skill.name} onChange={(e) => updateSkill(idx, 'name', e.target.value)} placeholder="Skill name" />
-              <select className="input-field text-sm" value={skill.level} onChange={(e) => updateSkill(idx, 'level', e.target.value)}>
-                <option>Beginner</option>
-                <option>Intermediate</option>
-                <option>Advanced</option>
-                <option>Expert</option>
-              </select>
-              <input className="w-20 input-field text-sm" type="number" value={skill.years} onChange={(e) => updateSkill(idx, 'years', Number(e.target.value))} />
-              <button onClick={() => removeSkill(idx)} className="text-red-500 hover:text-red-700">
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Match Section */}
-      <div className="card">
-        <h2 className="text-lg font-medium mb-4">Match with Job Description</h2>
-        <textarea className="input-field w-full h-32 mb-4" value={jd} onChange={(e) => setJd(e.target.value)} placeholder="Paste a job description here to see how your record matches..." />
-        <button onClick={handleMatch} className="cred-btn-primary w-full" disabled={matching || !record?.id || !jd}>
-          {matching ? <span className="flex items-center gap-2"><RefreshCw className="w-4 h-4" /> Matching...</span> : <span><Target className="w-4 h-4 mr-2" /> Generate Match Analysis</span>}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function MatchView({ matchResult, jd, record, onBack, onDraft }: any) {
-  // Real AI responses can omit empty arrays. Default them so the view can
-  // never throw mid-render (which would silently abort the transition).
-  const matchedSkills: string[] = matchResult?.matchedSkills || [];
-  const missingSkills: string[] = matchResult?.missingSkills || [];
-  const suggestions: string[] = matchResult?.suggestions || [];
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-start">
-        <button onClick={onBack} className="flex items-center gap-2 text-ink hover:text-txt" style={{ transition: 'color 140ms var(--ease-out)' }}>
-          <ArrowLeft className="w-4 h-4" strokeWidth={1.5} /> Back to Record
-        </button>
-        <h1 className="text-2xl text-txt">Job Match Analysis</h1>
-      </div>
-
-      <div className="card">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="text-3xl text-txt tabular-nums" style={{ fontFamily: 'var(--font-mono)' }}>{matchResult.fitScore}</div>
-          <div className="flex-1">
-            <div className="text-sm text-txt-2">Fit score</div>
-            <div className="w-full bg-void rounded-full h-1.5 mt-2 border border-line">
-              <div className={`h-1.5 rounded-full ${matchResult.tier === 'Strong' ? 'bg-ok' : matchResult.tier === 'Ready' ? 'bg-ink' : 'bg-bad'}`} style={{ width: `${matchResult.fitScore}%`, transition: 'width 360ms var(--ease-out)' }}></div>
-            </div>
-            <span className="badge mt-2">{matchResult.tier}</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <h3 className="text-sm text-txt mb-2">Matched skills</h3>
-            <div className="flex flex-wrap gap-2">
-              {matchedSkills.map((s: string) => (
-                <span key={s} className="badge">{s}</span>
-              ))}
-            </div>
-          </div>
-          <div>
-            <h3 className="text-sm text-txt mb-2">Missing skills</h3>
-            <div className="flex flex-wrap gap-2">
-              {missingSkills.map((s: string) => (
-                <span key={s} className="badge" style={{ color: 'var(--color-bad)' }}>{s}</span>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-6">
-          <h3 className="text-sm text-txt mb-2">Suggestions</h3>
-          <ul className="list-disc list-inside text-txt-2 space-y-1">
-            {suggestions.map((s: string) => (
-              <li key={s}>{s}</li>
-            ))}
-          </ul>
-        </div>
-      </div>
-
-      <div className="mt-8">
-        <button onClick={onDraft} className="cred-btn-primary w-full">
-          Generate Tailored Resume →
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function DraftView({ draft, matchResult, record, onBack, onReview, onApprove, onDownloadPDF, reviewing, review, onUpdated }: any) {
-  // Local editable copy of the draft content — edits stay here until "Save Edits".
-  const [content, setContent] = useState<any>(() => ({
-    summary: draft?.content?.summary || '',
-    experience: (draft?.content?.experience || []).map((exp: any) => ({
-      ...exp,
-      achievements: (exp.achievements || []).map((ach: any) => String(ach)),
-    })),
-    skills: [...(draft?.content?.skills || [])].map((s: any) => String(s)),
-    coverLetter: draft?.content?.coverLetter || '',
-    atsKeywords: [...(draft?.content?.atsKeywords || [])],
-  }));
-  const [savingEdits, setSavingEdits] = useState(false);
-  const [rejecting, setRejecting] = useState(false);
-
-  const updateAchievement = (expIdx: number, achIdx: number, value: string) =>
-    setContent((prev: any) => ({
-      ...prev,
-      experience: prev.experience.map((exp: any, i: number) =>
-        i === expIdx
-          ? { ...exp, achievements: exp.achievements.map((a: string, j: number) => (j === achIdx ? value : a)) }
-          : exp
-      ),
-    }));
-
-  const addAchievement = (expIdx: number) =>
-    setContent((prev: any) => ({
-      ...prev,
-      experience: prev.experience.map((exp: any, i: number) =>
-        i === expIdx ? { ...exp, achievements: [...exp.achievements, ''] } : exp
-      ),
-    }));
-
-  const removeAchievement = (expIdx: number, achIdx: number) =>
-    setContent((prev: any) => ({
-      ...prev,
-      experience: prev.experience.map((exp: any, i: number) =>
-        i === expIdx
-          ? { ...exp, achievements: exp.achievements.filter((_: string, j: number) => j !== achIdx) }
-          : exp
-      ),
-    }));
-
-  const updateSkill = (idx: number, value: string) =>
-    setContent((prev: any) => ({ ...prev, skills: prev.skills.map((s: string, i: number) => (i === idx ? value : s)) }));
-
-  const addSkill = () => setContent((prev: any) => ({ ...prev, skills: [...prev.skills, ''] }));
-
-  const removeSkill = (idx: number) =>
-    setContent((prev: any) => ({ ...prev, skills: prev.skills.filter((_: string, i: number) => i !== idx) }));
-
-  const handleSaveEdits = async () => {
-    if (!draft?.id) return;
-    setSavingEdits(true);
-    try {
-      const { data } = await draftAPI.update(draft.id, { content, status: 'edited' });
-      const saved = { ...draft, ...(data && typeof data === 'object' ? data : {}), content, status: 'edited' };
-      onUpdated(saved);
-    } catch (err) {
-      alert(getErrorMessage(err, 'Failed to save edits'));
-    } finally {
-      setSavingEdits(false);
-    }
-  };
-
-  const handleReject = async () => {
-    if (!draft?.id) return;
-    setRejecting(true);
-    try {
-      await draftAPI.update(draft.id, { status: 'rejected' });
-      onUpdated({ ...draft, status: 'rejected' });
-      onBack(); // return to the match/record view
-    } catch (err) {
-      alert(getErrorMessage(err, 'Failed to reject draft'));
-    } finally {
-      setRejecting(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-start">
-        <button onClick={onBack} className="flex items-center gap-2 text-ink hover:text-txt font-medium text-sm">
-          <ArrowLeft className="w-4 h-4" /> Back to Match
-        </button>
-        <h1 className="text-2xl font-medium text-txt">Tailored Resume Draft</h1>
-      </div>
-
-      <StatusStepper status={draft?.status} />
-
-      <div className="bg-surface border border-line p-6 rounded-xl">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-medium text-txt">Professional Summary</h2>
-          <span className="text-xs text-txt-3">Editable</span>
-        </div>
-        <textarea
-          className="input-field w-full h-32"
-          value={content.summary}
-          onChange={(e) => setContent((prev: any) => ({ ...prev, summary: e.target.value }))}
-          placeholder="Edit the tailored professional summary..."
-        />
-      </div>
-
-      <div className="bg-surface border border-line p-6 rounded-xl">
-        <h2 className="text-lg font-medium text-txt mb-4">Experience (AI Tailored)</h2>
-        <div className="space-y-4">
-          {content.experience.map((exp: any, idx: number) => (
-            <div key={idx} className="p-4 bg-void border border-line rounded-lg">
-              <div className="flex justify-between items-start mb-3">
-                <h4 className="font-semibold text-txt">{exp.role} — {exp.company}</h4>
-                <span className="text-xs text-txt-3">{exp.startDate} – {exp.endDate || 'Present'}</span>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <span className="badge">{parsedRecord.name || 'Name found'}</span>
+                  <span className="badge">{parsedRecord.email || 'Email found'}</span>
+                  <span className="badge">{parsedRecord.skills?.length || 0} skills</span>
+                  <span className="badge">{parsedRecord.experience?.length || 0} positions</span>
+                </div>
               </div>
-              <div className="space-y-2">
-                {exp.achievements.map((ach: string, ai: number) => (
-                  <div key={ai} className="flex gap-2 items-start">
-                    <span className="text-ink mt-2.5 text-xs">•</span>
-                    <input
-                      className="input-field text-sm flex-1"
-                      value={ach}
-                      onChange={(e) => updateAchievement(idx, ai, e.target.value)}
-                      placeholder="Edit achievement bullet..."
-                    />
-                    <button
-                      onClick={() => removeAchievement(idx, ai)}
-                      className="text-red-400 hover:text-red-300 p-2"
-                      title="Remove bullet"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+            )}
+          </div>
+
+          {/* Personal Info */}
+          <div className="card">
+            <h3 className="text-sm font-medium text-txt mb-4">Personal information</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-txt-3 mb-1">Full name</label>
+                <input
+                  className="input-field"
+                  placeholder="e.g. Alex Morgan"
+                  value={record?.personalInfo.name || ''}
+                  onChange={(e) => updatePersonal('name', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-txt-3 mb-1">Headline</label>
+                <input
+                  className="input-field"
+                  placeholder="e.g. Senior Distributed Systems Engineer"
+                  value={record?.personalInfo.headline || ''}
+                  onChange={(e) => updatePersonal('headline', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-txt-3 mb-1">Email</label>
+                <input
+                  className="input-field"
+                  placeholder="alex@example.com"
+                  value={record?.personalInfo.email || ''}
+                  onChange={(e) => updatePersonal('email', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-txt-3 mb-1">Phone</label>
+                <input
+                  className="input-field"
+                  placeholder="+1 (555) 012-3456"
+                  value={record?.personalInfo.phone || ''}
+                  onChange={(e) => updatePersonal('phone', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-txt-3 mb-1">Location</label>
+                <input
+                  className="input-field"
+                  placeholder="San Francisco, CA"
+                  value={record?.personalInfo.location || ''}
+                  onChange={(e) => updatePersonal('location', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-txt-3 mb-1">LinkedIn profile</label>
+                <input
+                  className="input-field"
+                  placeholder="https://linkedin.com/in/alexmorgan"
+                  value={record?.personalInfo.linkedin || ''}
+                  onChange={(e) => updatePersonal('linkedin', e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Work Experience */}
+          <div className="card">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-sm font-medium text-txt">Experience</h3>
+              <button onClick={addExperience} className="flex items-center gap-1 text-xs text-ink hover:text-txt font-medium">
+                <Plus className="w-3.5 h-3.5" /> Add role
+              </button>
+            </div>
+
+            {record?.experience.map((exp, idx) => (
+              <div key={exp.id || idx} className="p-4 bg-void border border-line rounded-lg mb-4">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 flex-1 mr-3">
+                    <div>
+                      <label className="block text-[11px] text-txt-3 mb-1">Role</label>
+                      <input
+                        className="input-field text-sm"
+                        placeholder="Staff Engineer"
+                        value={exp.role}
+                        onChange={(e) => updateExp(idx, 'role', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-txt-3 mb-1">Company</label>
+                      <input
+                        className="input-field text-sm"
+                        placeholder="Acme Corp"
+                        value={exp.company}
+                        onChange={(e) => updateExp(idx, 'company', e.target.value)}
+                      />
+                    </div>
                   </div>
-                ))}
-              </div>
-              <button onClick={() => addAchievement(idx)} className="mt-2 text-xs text-ink hover:text-txt font-medium">
-                + Add bullet
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
+                  <button onClick={() => removeExperience(idx)} className="text-bad hover:text-txt p-2" aria-label="Remove experience">
+                    <Trash2 className="w-4 h-4" strokeWidth={1.5} />
+                  </button>
+                </div>
 
-      <div className="bg-surface border border-line p-6 rounded-xl">
-        <h2 className="text-lg font-medium text-txt mb-4">Skills</h2>
-        <div className="flex flex-wrap gap-2">
-          {content.skills.map((skill: string, idx: number) => (
-            <div key={idx} className="flex items-center gap-1 bg-void border border-line rounded px-2 py-1">
-              <input
-                className="bg-transparent text-txt-2 text-xs font-medium outline-none w-28"
-                value={skill}
-                onChange={(e) => updateSkill(idx, e.target.value)}
-                placeholder="Skill"
-              />
-              <button onClick={() => removeSkill(idx)} className="text-txt-3 hover:text-red-400" title="Remove skill">
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
-          <button onClick={addSkill} className="flex items-center gap-1 text-xs text-ink hover:text-txt border border-dashed border-line-strong rounded px-2 py-1">
-            <Plus className="w-3 h-3" /> Add skill
-          </button>
-        </div>
-      </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                  <div>
+                    <label className="block text-[11px] text-txt-3 mb-1">Start date</label>
+                    <input
+                      className="input-field text-xs"
+                      type="date"
+                      value={exp.startDate}
+                      onChange={(e) => updateExp(idx, 'startDate', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-txt-3 mb-1">End date</label>
+                    <input
+                      className="input-field text-xs"
+                      type="date"
+                      value={exp.endDate || ''}
+                      disabled={exp.current}
+                      onChange={(e) => updateExp(idx, 'endDate', e.target.value || null)}
+                    />
+                  </div>
+                  <div className="flex items-center pt-5">
+                    <label className="flex items-center gap-2 text-xs text-txt-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={exp.current}
+                        onChange={(e) => updateExp(idx, 'current', e.target.checked)}
+                      />
+                      <span>Current role</span>
+                    </label>
+                  </div>
+                </div>
 
-      {review && (
-        <div className="bg-surface border border-line p-6 rounded-xl">
-          <h2 className="text-lg font-medium text-txt mb-4">ATS Review</h2>
-          <div className="flex items-center gap-4 mb-4">
-            <div className="text-2xl font-medium text-txt">{review.atsScore}</div>
-            <span className="text-sm font-medium text-txt-2">ATS Score</span>
-          </div>
-          <div className="space-y-2">
-            {review.checks.map((check: any) => (
-              <div key={check.id} className="flex items-center justify-between p-2 bg-void border border-line rounded">
-                <span className="text-sm text-txt-2">{check.name}</span>
-                <span className={`text-xs font-medium ${check.passed ? 'text-green-400' : 'text-red-400'}`}>
-                  {check.passed ? '✓ Pass' : '✗ Fail'}
-                </span>
+                <div className="space-y-2 mb-2">
+                  <label className="block text-xs text-txt-3">Achievements and metrics</label>
+                  {(exp.achievements || []).map((ach, ai) => (
+                    <div key={ai} className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                      <input
+                        className="input-field text-xs flex-1"
+                        placeholder="Led migration of data warehouse, improving query performance..."
+                        value={typeof ach === 'string' ? ach : ach.text}
+                        onChange={(e) => updateAchievement(idx, ai, 'text', e.target.value)}
+                      />
+                      <div className="flex items-center gap-2">
+                        <input
+                          className="input-field text-xs flex-1 sm:w-44"
+                          placeholder="Metric (e.g. 40% latency drop)"
+                          value={typeof ach === 'string' ? '' : ach.metric || ''}
+                          onChange={(e) => updateAchievement(idx, ai, 'metric', e.target.value)}
+                        />
+                        <button
+                          onClick={() => {
+                            const exps = [...record!.experience];
+                            exps[idx].achievements = exps[idx].achievements.filter((_, i) => i !== ai);
+                            setRecord({ ...record!, experience: exps });
+                          }}
+                          className="text-bad hover:text-txt p-2 shrink-0"
+                          aria-label="Remove achievement"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <button onClick={() => addAchievement(idx)} className="text-xs text-ink hover:text-txt font-medium">
+                    + Add achievement
+                  </button>
+                </div>
               </div>
             ))}
+          </div>
+
+          {/* Match Trigger Card */}
+          <div className="card">
+            <h3 className="text-base font-medium text-txt mb-1">Match with job description</h3>
+            <p className="text-xs text-txt-2 mb-4">Paste the target job posting to analyze fit and uncover gaps.</p>
+            <textarea
+              className="input-field w-full h-36 mb-4 text-xs font-mono"
+              placeholder="Paste requirements, responsibilities, and qualifications..."
+              value={jd}
+              onChange={(e) => setJd(e.target.value)}
+            />
+            <button
+              onClick={handleMatch}
+              disabled={matching || !jd}
+              className="cred-btn-primary w-full disabled:opacity-50"
+            >
+              {matching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Target className="w-4 h-4 mr-2" strokeWidth={1.5} />}
+              {matching ? 'Analyzing fit against record' : 'Generate Opportunity Analysis'}
+            </button>
           </div>
         </div>
       )}
 
-      <div className="flex flex-wrap gap-3">
-        {review ? (
-          <button onClick={onApprove} className="cred-btn-primary w-full">
-            <ShieldCheck className="w-4 h-4 mr-2" /> Approve & Export
-          </button>
-        ) : (
-          <button onClick={onReview} className="cred-btn-primary" disabled={reviewing}>
-            {reviewing ? 'Reviewing...' : 'Run ATS Review'}
-          </button>
-        )}
-        <button
-          onClick={handleSaveEdits}
-          disabled={savingEdits}
-          className="cred-btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {savingEdits ? 'Saving...' : 'Save Edits'}
-        </button>
-        <button
-          onClick={handleReject}
-          disabled={rejecting}
-          className="bg-surface border border-bad text-bad px-6 py-3 rounded-lg font-medium hover:bg-bad/10 hover:border-bad transition disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {rejecting ? 'Rejecting...' : 'Reject'}
-        </button>
-        <button
-          onClick={onDownloadPDF}
-          className="cred-btn-secondary"
-        >
-          <Download className="w-4 h-4 mr-2" /> Download PDF
-        </button>
-      </div>
-    </div>
-  );
-}
+      {/* 2. OPPORTUNITY RADAR */}
+      {activeTab === 'match' && matchResult && (
+        <div className="space-y-6">
+          <div className="card">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-base font-medium text-txt">Opportunity fit analysis</h2>
+              <span className={`badge ${matchResult.tier === 'Strong' ? 'text-ok' : matchResult.tier === 'Ready' ? 'text-ink' : 'text-bad'}`}>
+                {matchResult.tier} Fit
+              </span>
+            </div>
 
-// Visual approval flow: Draft → Review → Approved → Exported.
-// Derived from draft.status (draft | edited | approved | rejected).
-function StatusStepper({ status }: { status?: string }) {
-  const steps = ['Draft', 'Review', 'Approved', 'Exported'];
-  const activeIndex = status === 'approved' ? 2 : status === 'edited' ? 1 : 0;
-  const rejected = status === 'rejected';
-
-  const statusLabel = rejected
-    ? 'Rejected'
-    : status === 'approved'
-      ? 'Approved'
-      : status === 'edited'
-        ? 'Edited — re-run ATS review'
-        : 'Draft';
-
-  const labelColor = rejected
-    ? 'text-bad'
-    : status === 'approved'
-      ? 'text-ok'
-      : 'text-ink';
-
-  return (
-    <div className="bg-surface border border-line p-4 rounded-xl">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-medium text-txt-2">Approval flow</span>
-        <span className={`text-xs font-medium ${labelColor}`}>Current: {statusLabel}</span>
-      </div>
-      <div className="flex items-center">
-        {steps.map((step, i) => {
-          const done = !rejected && i < activeIndex;
-          const active = !rejected && i === activeIndex;
-          const isApprovedStep = i === 2;
-          const circleClass = done || active
-            ? isApprovedStep
-              ? 'bg-ok border-ok text-txt'
-              : 'bg-ink border-ink text-txt'
-            : 'bg-void border-line text-txt-3';
-          return (
-            <React.Fragment key={step}>
-              <div className="flex flex-col items-center gap-1.5 min-w-[52px]">
-                <div className={`w-7 h-7 rounded-full border flex items-center justify-center text-xs font-medium ${circleClass} ${active ? (isApprovedStep ? 'ring-4 ring-ok/20' : 'ring-4 ring-ink/20') : ''} ${rejected ? 'opacity-40' : ''}`}>
-                  {done ? '✓' : i + 1}
+            {/* Score Centerpiece */}
+            <div className="flex items-center gap-6 mb-6 pb-6 border-b border-line">
+              <div className="text-4xl text-txt font-mono tabular-nums">{matchResult.fitScore}</div>
+              <div className="flex-1">
+                <div className="text-xs text-txt-3 mb-2">Overall match score</div>
+                <div className="w-full bg-void rounded-full h-2 border border-line">
+                  <div
+                    className={`h-2 rounded-full transition-all duration-300 ${
+                      matchResult.fitScore >= 80 ? 'bg-ok' : matchResult.fitScore >= 60 ? 'bg-ink' : 'bg-bad'
+                    }`}
+                    style={{ width: `${matchResult.fitScore}%` }}
+                  />
                 </div>
-                <span className={`text-[11px] ${active ? 'text-txt font-medium' : done ? 'text-txt-2' : 'text-txt-3'} ${rejected ? 'opacity-40' : ''}`}>
-                  {step}
-                </span>
               </div>
-              {i < steps.length - 1 && (
-                <div className={`flex-1 h-0.5 mx-1 mb-5 ${done ? (i === 1 ? 'bg-ok' : 'bg-ink') : 'bg-void'}`} />
-              )}
-            </React.Fragment>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+            </div>
 
-function ExportView({ draft, record, onBack }: any) {
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-start">
-        <button onClick={onBack} className="flex items-center gap-2 text-ink hover:text-txt font-medium">
-          <ArrowLeft className="w-4 h-4" /> Back
-        </button>
-        <h1 className="text-2xl font-medium text-txt">Export</h1>
-      </div>
-      <div className="card">
-        <p className="text-txt-2">Your resume is ready for download.</p>
-      </div>
+            <p className="text-sm text-txt-2 leading-relaxed mb-6">{matchResult.summary}</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 bg-void border border-line rounded-lg">
+                <h4 className="text-xs font-medium text-txt mb-3 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-ok" strokeWidth={1.5} /> Matched competencies ({matchResult.matchedSkills?.length || 0})
+                </h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {(matchResult.matchedSkills || []).map((s) => (
+                    <span key={s} className="badge">
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-4 bg-void border border-line rounded-lg">
+                <h4 className="text-xs font-medium text-txt mb-3 flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-bad" strokeWidth={1.5} /> Gaps to address ({matchResult.missingSkills?.length || 0})
+                </h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {(matchResult.missingSkills || []).map((s) => (
+                    <span key={s} className="badge text-bad">
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 pt-6 border-t border-line">
+              <h4 className="text-xs font-medium text-txt mb-2">Key suggestions</h4>
+              <ul className="space-y-1.5 text-xs text-txt-2">
+                {(matchResult.suggestions || []).map((s, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="text-ink">•</span>
+                    <span>{s}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <div className="card flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-txt-3">Resume style:</span>
+              <select
+                value={draftStyle}
+                onChange={(e) => setDraftStyle(e.target.value as any)}
+                className="input-field text-xs max-w-xs"
+              >
+                <option value="modern">Modern Clean (ATS standard)</option>
+                <option value="executive">Classic Executive (Leadership)</option>
+                <option value="tech">Tech Minimal (Engineering)</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleInterviewPrep}
+                disabled={generatingInterview}
+                className="cred-btn-secondary text-sm"
+              >
+                {generatingInterview ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <MessageSquare className="w-4 h-4 mr-1.5" strokeWidth={1.5} />}
+                Interview Coach
+              </button>
+              <button
+                onClick={handleDraft}
+                disabled={drafting}
+                className="cred-btn-primary text-sm"
+              >
+                {drafting ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Layers className="w-4 h-4 mr-1.5" strokeWidth={1.5} />}
+                Draft Tailored Assets
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. TAILORED DRAFT STUDIO */}
+      {activeTab === 'draft' && draft && (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-base font-medium text-txt">Tailored Resume Draft</h2>
+              <p className="text-xs text-txt-2">Aligned with the job requirements. Edit any line before final approval.</p>
+            </div>
+            <span className="badge">Status: {draft.status}</span>
+          </div>
+
+          <div className="card">
+            <h3 className="text-sm font-medium text-txt mb-2">Professional summary</h3>
+            <textarea
+              className="input-field w-full h-24 text-sm"
+              value={draft.content.summary}
+              onChange={(e) => setDraft({
+                ...draft,
+                content: { ...draft.content, summary: e.target.value },
+              })}
+            />
+          </div>
+
+          <div className="card">
+            <h3 className="text-sm font-medium text-txt mb-3">Tailored experience bullets</h3>
+            <div className="space-y-4">
+              {draft.content.experience.map((exp: any, ei: number) => (
+                <div key={ei} className="p-4 bg-void border border-line rounded-lg">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-sm text-txt font-medium">{exp.role} — {exp.company}</span>
+                    <span className="meta">{exp.startDate} – {exp.endDate || 'Present'}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {(exp.achievements || []).map((ach: string, ai: number) => (
+                      <div key={ai} className="flex items-center gap-2">
+                        <span className="text-ink text-xs">•</span>
+                        <input
+                          className="input-field text-xs flex-1"
+                          value={ach}
+                          onChange={(e) => {
+                            const newExp = [...draft.content.experience];
+                            newExp[ei].achievements[ai] = e.target.value;
+                            setDraft({ ...draft, content: { ...draft.content, experience: newExp } });
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card">
+            <h3 className="text-sm font-medium text-txt mb-2">Tailored cover letter</h3>
+            <textarea
+              className="input-field w-full h-44 text-xs font-mono"
+              value={draft.content.coverLetter}
+              onChange={(e) => setDraft({
+                ...draft,
+                content: { ...draft.content, coverLetter: e.target.value },
+              })}
+            />
+          </div>
+
+          <div className="flex justify-between items-center">
+            <button onClick={() => setActiveTab('match')} className="cred-btn-secondary text-sm">
+              <ArrowLeft className="w-4 h-4 mr-1" strokeWidth={1.5} /> Back to match
+            </button>
+            <button
+              onClick={handleReview}
+              disabled={reviewing}
+              className="cred-btn-primary text-sm"
+            >
+              {reviewing ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <ShieldCheck className="w-4 h-4 mr-1.5" strokeWidth={1.5} />}
+              Run ATS Review & Quality Check
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 4. ATS REVIEW */}
+      {activeTab === 'review' && review && (
+        <div className="space-y-6">
+          <div className="card">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-medium text-txt">ATS Quality Review</h2>
+              <div className="flex items-center gap-3">
+                <span className="text-2xl font-mono tabular-nums text-txt">{review.atsScore}</span>
+                <span className="meta">ATS Compatibility</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-txt-2 mb-6">{review.summary}</p>
+
+            <div className="space-y-2 mb-6">
+              {(review.checks || []).map((check: any) => (
+                <div key={check.id} className="p-3 bg-void border border-line rounded-lg flex items-center justify-between">
+                  <div>
+                    <span className="text-xs text-txt font-medium">{check.name}</span>
+                    {check.suggestion && (
+                      <p className="text-[11px] text-txt-3 mt-0.5">{check.suggestion}</p>
+                    )}
+                  </div>
+                  <span className={`badge text-xs ${check.passed ? 'text-ok' : 'text-bad'}`}>
+                    {check.passed ? 'Pass' : 'Fix suggested'}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* STAR Rewrites */}
+            {review.actionableRewrites && review.actionableRewrites.length > 0 && (
+              <div className="mt-6 pt-6 border-t border-line">
+                <h4 className="text-xs font-medium text-txt mb-3 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-ink" strokeWidth={1.5} /> High-impact metric upgrades
+                </h4>
+                <div className="space-y-3">
+                  {review.actionableRewrites.map((rw: any, i: number) => (
+                    <div key={i} className="p-3.5 bg-surface border border-line rounded-lg">
+                      <div className="text-xs text-txt-3 line-through mb-1">Previous: {rw.original}</div>
+                      <div className="text-xs text-txt font-medium mb-1">Upgraded: {rw.improved}</div>
+                      <p className="text-[11px] text-txt-3 mb-2">{rw.reason}</p>
+                      <button
+                        onClick={() => {
+                          if (!draft) return;
+                          const newExp = draft.content.experience.map((exp: any) => ({
+                            ...exp,
+                            achievements: exp.achievements.map((ach: string) =>
+                              ach === rw.original ? rw.improved : ach
+                            ),
+                          }));
+                          setDraft({ ...draft, content: { ...draft.content, experience: newExp } });
+                          showToast('Applied bullet upgrade to draft');
+                        }}
+                        className="cred-btn-secondary text-xs h-7 px-2.5"
+                      >
+                        <Check className="w-3.5 h-3.5 mr-1 text-ok" strokeWidth={1.5} /> Apply rewrite
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="card flex items-center justify-between">
+            <div>
+              <h4 className="text-sm font-medium text-txt">Human approval</h4>
+              <p className="text-xs text-txt-3">Review and approve to unlock PDF generation.</p>
+            </div>
+            <button
+              onClick={handleApprove}
+              className="cred-btn-primary text-sm"
+            >
+              <ShieldCheck className="w-4 h-4 mr-2" strokeWidth={1.5} /> Approve and proceed
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 5. INTERVIEW COACH */}
+      {activeTab === 'interview' && (
+        <div className="space-y-6">
+          <div className="card">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h2 className="text-base font-medium text-txt">Interview Coach</h2>
+                <p className="text-xs text-txt-2">Predicted technical and situational questions mapped to your record.</p>
+              </div>
+              <button
+                onClick={handleInterviewPrep}
+                disabled={generatingInterview}
+                className="cred-btn-secondary text-xs"
+              >
+                {generatingInterview ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" strokeWidth={1.5} />}
+                Regenerate
+              </button>
+            </div>
+
+            {interviewPrep ? (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-xs font-medium text-txt mb-3">Role-specific technical questions</h3>
+                  <div className="space-y-3">
+                    {(interviewPrep.technicalQuestions || []).map((tq, i) => (
+                      <div key={i} className="p-4 bg-void border border-line rounded-lg">
+                        <div className="text-xs font-medium text-txt mb-1">{tq.question}</div>
+                        <div className="meta mb-2">Context: {tq.context}</div>
+                        <div className="text-xs text-txt-2">
+                          <span className="text-ink">Talking points: </span>
+                          {(tq.talkingPoints || []).join('  ·  ')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-xs font-medium text-txt mb-3">Behavioral STAR response blueprints</h3>
+                  <div className="space-y-3">
+                    {(interviewPrep.behavioralQuestions || []).map((bq, i) => (
+                      <div key={i} className="p-4 bg-void border border-line rounded-lg">
+                        <div className="text-xs font-medium text-txt mb-1">{bq.question}</div>
+                        <div className="meta mb-3">Competency: {bq.competency}</div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-txt-2">
+                          <div><strong className="text-txt">Situation:</strong> {bq.starFramework?.situation}</div>
+                          <div><strong className="text-txt">Task:</strong> {bq.starFramework?.task}</div>
+                          <div><strong className="text-txt">Action:</strong> {bq.starFramework?.action}</div>
+                          <div><strong className="text-txt">Result:</strong> {bq.starFramework?.result}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-xs font-medium text-txt mb-2">Questions to ask the interviewer</h3>
+                  <ul className="space-y-1 text-xs text-txt-2">
+                    {(interviewPrep.questionsToAskInterviewer || []).map((q, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="text-ink">•</span>
+                        <span>{q}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <MessageSquare className="w-8 h-8 text-txt-3 mx-auto mb-2" strokeWidth={1.5} />
+                <h4 className="text-sm font-medium text-txt mb-1">No interview prep generated</h4>
+                <p className="text-xs text-txt-3 mb-4">Synthesize tailored interview intelligence from your record and target role.</p>
+                <button
+                  onClick={handleInterviewPrep}
+                  disabled={generatingInterview}
+                  className="cred-btn-primary text-xs"
+                >
+                  {generatingInterview ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : <Sparkles className="w-3.5 h-3.5 mr-2" strokeWidth={1.5} />}
+                  Generate Interview Coach
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 6. EXPORT */}
+      {activeTab === 'export' && draft && (
+        <div className="space-y-6">
+          <div className="card">
+            <h2 className="text-base font-medium text-txt mb-1">Export verified assets</h2>
+            <p className="text-xs text-txt-2 mb-6">Select layout template and download ATS-compliant documents.</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              {[
+                {
+                  id: 'modern' as ResumeTemplateType,
+                  name: 'Modern Clean',
+                  desc: 'High readability, balanced margins, subtle dividers. Suited for technology and product roles.',
+                },
+                {
+                  id: 'executive' as ResumeTemplateType,
+                  name: 'Classic Executive',
+                  desc: 'Traditional Times serif styling, centered header, formal line work. Suited for leadership and management.',
+                },
+                {
+                  id: 'tech' as ResumeTemplateType,
+                  name: 'Tech Minimal',
+                  desc: 'Compact layout with monospace technical accents and high information density.',
+                },
+              ].map((tmpl) => {
+                const active = selectedTemplate === tmpl.id;
+                return (
+                  <div
+                    key={tmpl.id}
+                    onClick={() => setSelectedTemplate(tmpl.id)}
+                    className={`p-4 rounded-xl border cursor-pointer transition ${
+                      active ? 'bg-raised border-ink active-rule' : 'bg-surface border-line hover:border-line-strong'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center mb-1.5">
+                      <span className="text-sm font-medium text-txt">{tmpl.name}</span>
+                      {active && <CheckCircle2 className="w-4 h-4 text-ink" strokeWidth={1.5} />}
+                    </div>
+                    <p className="text-xs text-txt-3 leading-relaxed">{tmpl.desc}</p>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={handleDownloadPDF}
+                className="cred-btn-primary text-sm"
+              >
+                <Download className="w-4 h-4 mr-2" strokeWidth={1.5} /> Download resume PDF
+              </button>
+              <button
+                onClick={handleDownloadCoverLetter}
+                className="cred-btn-secondary text-sm"
+              >
+                <FileText className="w-4 h-4 mr-2" strokeWidth={1.5} /> Download cover letter PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Embedded Conversational Agentic Copilot */}
+      <AICopilot
+        isOpen={copilotOpen}
+        onClose={() => setCopilotOpen(false)}
+        record={record}
+        context={{ activeTab, matchResult, draft, jd }}
+      />
     </div>
   );
 }
