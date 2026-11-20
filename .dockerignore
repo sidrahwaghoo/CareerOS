@@ -1,0 +1,35 @@
+# Dependencies (reinstalled inside the image with npm ci)
+**/node_modules
+node_modules
+
+# Build output (regenerated inside the image)
+**/dist
+dist
+**/build
+
+# Version control
+.git
+.gitignore
+
+# Logs
+*.log
+**/*.log
+npm-debug.log*
+
+# Local secrets — never send these to the build context.
+# Secrets are provided at runtime via Secret Manager / Cloud Run.
+.env
+**/.env
+.env.*
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Test / coverage output
+coverage
+**/coverage
+
+# Local data store and editor/OS noise (not needed in the image)
+backend/data
+.DS_Store
+Thumbs.db

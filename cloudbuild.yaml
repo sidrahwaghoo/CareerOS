@@ -1,0 +1,69 @@
+# Google Cloud Build configuration for Credensa.
+#
+# What this does:
+#   1. Builds the multi-stage Dockerfile (frontend build + backend runtime).
+#   2. Pushes the image to Artifact Registry / Container Registry.
+#   3. Deploys it to Google Cloud Run (public, port 3001).
+#
+# Secrets are read by Cloud Run at runtime from Secret Manager. Create these
+# secrets before the first build (values are set with `gcloud secrets ...`):
+#
+#   credensa-gemini-key               -> GEMINI_API_KEY (Google AI Studio key)
+#   credensa-firebase-project-id      -> FIREBASE_PROJECT_ID
+#   credensa-firebase-client-email    -> FIREBASE_CLIENT_EMAIL
+#   credensa-firebase-private-key     -> FIREBASE_PRIVATE_KEY (full PEM, \n allowed)
+#
+# The Cloud Run runtime service account must have the
+# `roles/secretmanager.secretAccessor` role on those secrets. The Cloud Build
+# service account needs `roles/run.admin` and `roles/iam.serviceAccountUser`
+# to deploy. Enable the APIs: cloudbuild, run, secretmanager, artifactregistry.
+
+substitutions:
+  _REGION: asia-south1 # Mumbai (can be overridden at submit time)
+  _SERVICE: credensa
+
+steps:
+  # 1. Build the container. VITE_API_URL=/api is baked into the frontend so
+  #    the production app calls the backend on the same origin.
+  - name: gcr.io/cloud-builders/docker
+    id: build-image
+    args:
+      - build
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/$_SERVICE:$SHORT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/$_SERVICE:latest'
+      - '--build-arg'
+      - 'VITE_API_URL=/api'
+      - '.'
+
+  # 2. Deploy the image to Cloud Run.
+  #    FRONTEND_URL is intentionally left unset: same-origin requests do not
+  #    need CORS overrides, and the backend falls back to allowing the caller.
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:gcloud
+    id: deploy-cloud-run
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - '$_SERVICE'
+      - '--image=gcr.io/$PROJECT_ID/$_SERVICE:$SHORT_SHA'
+      - '--region=$_REGION'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--port=3001'
+      - '--set-env-vars=NODE_ENV=production,GEMINI_MODEL=gemini-2.0-flash'
+      - '--set-secrets=GEMINI_API_KEY=credensa-gemini-key:latest,FIREBASE_PROJECT_ID=credensa-firebase-project-id:latest,FIREBASE_CLIENT_EMAIL=credensa-firebase-client-email:latest,FIREBASE_PRIVATE_KEY=credensa-firebase-private-key:latest'
+      - '--quiet'
+    waitFor:
+      - build-image
+
+# Pushing these tags makes the images available to Cloud Run.
+images:
+  - gcr.io/$PROJECT_ID/$_SERVICE:$SHORT_SHA
+  - gcr.io/$PROJECT_ID/$_SERVICE:latest
+
+timeout: 1200s
+
+options:
+  logging: CLOUD_LOGGING_ONLY
