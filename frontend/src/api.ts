@@ -7,7 +7,8 @@ import type {
   ResumeTemplateType,
 } from './types';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+// Always use relative /api path so requests go to the current host (works on Cloud Run, localhost, and custom domains)
+const API_BASE = '/api';
 
 const api: AxiosInstance = axios.create({
   baseURL: API_BASE,
@@ -27,8 +28,9 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    // Log auth issues without forcing an immediate disruptive logout loop
     if (error.response?.status === 401) {
-      await signOutUser().catch(() => undefined);
+      console.warn('API request unauthorized (401):', error?.config?.url);
     }
     return Promise.reject(error);
   },
