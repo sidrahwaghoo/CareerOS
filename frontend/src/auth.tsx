@@ -19,33 +19,31 @@ export interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    // Check if demo user is active in localStorage
-    const savedDemo = localStorage.getItem('credensa_demo_user');
-    if (savedDemo) {
+  const [user, setUser] = useState<User | null>(() => {
+    if (typeof window !== 'undefined') {
       try {
-        const parsed = JSON.parse(savedDemo);
-        setUser({
-          uid: parsed.uid || 'demo-user-sidrah',
-          email: parsed.email || 'sidrahwaghoo786@gmail.com',
-          displayName: parsed.displayName || 'Sidrah Waghoo',
-          photoURL: null,
-          getIdToken: async () => 'guest-demo-token',
-        } as unknown as User);
-        setLoading(false);
-        return;
+        const saved = localStorage.getItem('credensa_user');
+        if (saved) return JSON.parse(saved);
       } catch {}
     }
+    return null;
+  });
+  const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
     const unsubscribe = onAuthChange((firebaseUser) => {
-      // If a demo user is active in localStorage, ignore Firebase's null state
-      if (!firebaseUser && typeof window !== 'undefined' && localStorage.getItem('credensa_demo_user')) {
-        return;
+      if (firebaseUser) {
+        try {
+          const u = {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName,
+            photoURL: firebaseUser.photoURL,
+          };
+          localStorage.setItem('credensa_user', JSON.stringify(u));
+        } catch {}
+        setUser(firebaseUser);
       }
-      setUser(firebaseUser);
       setLoading(false);
     });
     return unsubscribe;
@@ -56,28 +54,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       loading,
       signIn: async () => {
-        // Clear demo user before starting real Google login
-        localStorage.removeItem('credensa_demo_user');
-        await signInWithGoogle();
+        const res = await signInWithGoogle();
+        if (res && res.user) {
+          try {
+            const u = {
+              uid: res.user.uid,
+              email: res.user.email,
+              displayName: res.user.displayName,
+              photoURL: res.user.photoURL,
+            };
+            localStorage.setItem('credensa_user', JSON.stringify(u));
+          } catch {}
+          setUser(res.user);
+        }
       },
       signInAsDemo: () => {
         const demoUser = {
           uid: 'demo-user-sidrah',
           email: 'sidrahwaghoo786@gmail.com',
           displayName: 'Sidrah Waghoo',
-        };
-        localStorage.setItem('credensa_demo_user', JSON.stringify(demoUser));
-        setUser({
-          ...demoUser,
           photoURL: null,
-          getIdToken: async () => 'guest-demo-token',
-        } as unknown as User);
+        };
+        try {
+          localStorage.setItem('credensa_user', JSON.stringify(demoUser));
+        } catch {}
+        setUser(demoUser as unknown as User);
         setLoading(false);
       },
       signOut: async () => {
-        localStorage.removeItem('credensa_demo_user');
+        try {
+          localStorage.removeItem('credensa_user');
+        } catch {}
         setUser(null);
-        await signOutUser();
+        await signOutUser().catch(() => undefined);
       },
       getIdToken,
     }),

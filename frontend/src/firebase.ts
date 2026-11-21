@@ -55,22 +55,12 @@ const googleProvider = new GoogleAuthProvider();
 // Ask for the user's email and basic profile; no custom scopes are required.
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-/** Sign in with Google with automatic redirect fallback if popup is closed or blocked. */
+/** Sign in with Google Identity provider. */
 export async function signInWithGoogle() {
   if (!auth) {
     return Promise.reject(new Error(configurationError));
   }
-  try {
-    return await signInWithPopup(auth, googleProvider);
-  } catch (err: any) {
-    // If popup is closed or blocked by browser policies/extensions, fallback to redirect
-    if (err?.code === 'auth/popup-blocked' || err?.code === 'auth/popup-closed-by-user') {
-      console.log('Popup blocked or closed; initiating seamless Google redirect login...');
-      await signInWithRedirect(auth, googleProvider);
-      return;
-    }
-    throw err;
-  }
+  return await signInWithPopup(auth, googleProvider);
 }
 
 /** End the current Firebase session. */
@@ -84,45 +74,40 @@ export function signOutUser() {
  * there is no user. The token is sent to the API as `Authorization: Bearer …`.
  */
 export async function getIdToken(): Promise<string | null> {
-  if (typeof window !== 'undefined' && localStorage.getItem('credensa_demo_user')) {
+  if (auth && auth.currentUser) {
+    try {
+      const token = await auth.currentUser.getIdToken();
+      if (token) return token;
+    } catch {}
+  }
+  if (typeof window !== 'undefined' && localStorage.getItem('credensa_user')) {
     return 'guest-demo-token';
   }
-  if (!auth) return null;
-  const user = auth.currentUser;
-  if (!user) return null;
-  return user.getIdToken();
+  return null;
 }
 
 /** Subscribe to authentication state changes. Returns an unsubscribe function. */
 export function onAuthChange(callback: (user: User | null) => void) {
-  if (typeof window !== 'undefined' && localStorage.getItem('credensa_demo_user')) {
+  if (typeof window !== 'undefined' && localStorage.getItem('credensa_user')) {
     try {
-      const stored = JSON.parse(localStorage.getItem('credensa_demo_user') || '{}');
-      callback({
-        uid: stored.uid || 'demo-user-sidrah',
-        email: stored.email || 'sidrahwaghoo786@gmail.com',
-        displayName: stored.displayName || 'Sidrah Waghoo',
-        photoURL: null,
-        getIdToken: async () => 'guest-demo-token',
-      } as unknown as User);
-      return () => undefined;
+      const stored = JSON.parse(localStorage.getItem('credensa_user') || '{}');
+      if (stored && stored.uid) {
+        callback({
+          uid: stored.uid,
+          email: stored.email || null,
+          displayName: stored.displayName || 'Credensa User',
+          photoURL: stored.photoURL || null,
+          getIdToken: async () => 'guest-demo-token',
+        } as unknown as User);
+      }
     } catch {}
   }
   if (!auth) {
-    callback(null);
     return () => undefined;
   }
-  getRedirectResult(auth)
-    .then((res) => {
-      if (res?.user) callback(res.user);
-    })
-    .catch((err) => console.warn('Redirect auth check:', err?.message));
-
   return onAuthStateChanged(auth, (firebaseUser) => {
-    // If a demo user session was created in localStorage, ignore null callback from Firebase Auth
-    if (!firebaseUser && typeof window !== 'undefined' && localStorage.getItem('credensa_demo_user')) {
-      return;
+    if (firebaseUser) {
+      callback(firebaseUser);
     }
-    callback(firebaseUser);
   });
 }
