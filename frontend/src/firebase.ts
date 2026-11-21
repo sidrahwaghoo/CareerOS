@@ -100,5 +100,11 @@ export function onAuthChange(callback: (user: User | null) => void) {
     callback(null);
     return () => undefined;
   }
-  return onAuthStateChanged(auth, callback);
+  return onAuthStateChanged(auth, (firebaseUser) => {
+    // If a demo user session was created in localStorage, ignore null callback from Firebase Auth
+    if (!firebaseUser && typeof window !== 'undefined' && localStorage.getItem('credensa_demo_user')) {
+      return;
+    }
+    callback(firebaseUser);
+  });
 }

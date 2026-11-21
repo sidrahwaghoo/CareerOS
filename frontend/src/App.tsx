@@ -236,12 +236,17 @@ function SignInScreen() {
     try {
       await signIn();
     } catch (err: any) {
-      if (err?.code === 'auth/popup-closed-by-user' || err?.message?.includes('popup-closed-by-user')) {
-        // User voluntarily dismissed the popup window, ignore cleanly
-        return;
+      console.error('Google Sign-in failed:', err);
+      const code = err?.code || '';
+      if (code === 'auth/popup-closed-by-user') {
+        setError('Popup was closed before sign-in completed. Please try again or click "Enter Workspace".');
+      } else if (code === 'auth/configuration-not-found' || code === 'auth/operation-not-allowed') {
+        setError('Google sign-in is disabled in Firebase Console. Go to Authentication > Sign-in method > Google and enable it, or use "Enter Workspace".');
+      } else if (code === 'auth/unauthorized-domain') {
+        setError('Domain not authorized in Firebase Console (Authentication > Settings > Authorized domains). Add your run.app domain, or use "Enter Workspace".');
+      } else {
+        setError(err?.message || 'Unable to sign in. Please verify Google Auth in Firebase Console or use "Enter Workspace".');
       }
-      const message = err instanceof Error ? err.message : '';
-      setError(message || 'Unable to sign in. Verify that Google Authentication is enabled for this project, or contact your administrator.');
     } finally {
       setBusy(false);
     }

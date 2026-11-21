@@ -41,6 +41,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const unsubscribe = onAuthChange((firebaseUser) => {
+      // If a demo user is active in localStorage, ignore Firebase's null state
+      if (!firebaseUser && typeof window !== 'undefined' && localStorage.getItem('credensa_demo_user')) {
+        return;
+      }
       setUser(firebaseUser);
       setLoading(false);
     });
@@ -52,6 +56,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       loading,
       signIn: async () => {
+        // Clear demo user before starting real Google login
+        localStorage.removeItem('credensa_demo_user');
         await signInWithGoogle();
       },
       signInAsDemo: () => {
@@ -66,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           photoURL: null,
           getIdToken: async () => 'guest-demo-token',
         } as unknown as User);
+        setLoading(false);
       },
       signOut: async () => {
         localStorage.removeItem('credensa_demo_user');

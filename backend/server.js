@@ -140,11 +140,16 @@ app.use('/api/chat', chatRoutes);
 const publicDir = path.join(__dirname, 'public');
 app.use(express.static(publicDir));
 
-// SPA fallback: serve index.html for non-API routes
+// SPA fallback: serve index.html for non-API routes with no-cache so latest build is always loaded
 app.use((req, res, next) => {
   if (req.method !== 'GET' || req.path.startsWith('/api/')) return next();
   const indexPath = path.join(publicDir, 'index.html');
-  if (fs.existsSync(indexPath)) return res.sendFile(indexPath);
+  if (fs.existsSync(indexPath)) {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    return res.sendFile(indexPath);
+  }
   next();
 });
 
