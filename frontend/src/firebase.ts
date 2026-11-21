@@ -4,6 +4,8 @@ import {
   GoogleAuthProvider,
   onAuthStateChanged,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut,
 } from 'firebase/auth';
 import type { Auth, User } from 'firebase/auth';
@@ -53,12 +55,22 @@ const googleProvider = new GoogleAuthProvider();
 // Ask for the user's email and basic profile; no custom scopes are required.
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-/** Sign in with the real Google Identity provider. */
-export function signInWithGoogle() {
+/** Sign in with Google with automatic redirect fallback if popup is closed or blocked. */
+export async function signInWithGoogle() {
   if (!auth) {
     return Promise.reject(new Error(configurationError));
   }
-  return signInWithPopup(auth, googleProvider);
+  try {
+    return await signInWithPopup(auth, googleProvider);
+  } catch (err: any) {
+    // If popup is closed or blocked by browser policies/extensions, fallback to redirect
+    if (err?.code === 'auth/popup-blocked' || err?.code === 'auth/popup-closed-by-user') {
+      console.log('Popup blocked or closed; initiating seamless Google redirect login...');
+      await signInWithRedirect(auth, googleProvider);
+      return;
+    }
+    throw err;
+  }
 }
 
 /** End the current Firebase session. */
@@ -100,6 +112,12 @@ export function onAuthChange(callback: (user: User | null) => void) {
     callback(null);
     return () => undefined;
   }
+  getRedirectResult(auth)
+    .then((res) => {
+      if (res?.user) callback(res.user);
+    })
+    .catch((err) => console.warn('Redirect auth check:', err?.message));
+
   return onAuthStateChanged(auth, (firebaseUser) => {
     // If a demo user session was created in localStorage, ignore null callback from Firebase Auth
     if (!firebaseUser && typeof window !== 'undefined' && localStorage.getItem('credensa_demo_user')) {
